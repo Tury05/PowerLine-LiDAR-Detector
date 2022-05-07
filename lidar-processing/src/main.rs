@@ -1,5 +1,6 @@
-use las::{Read, Reader, Writer, Header, Write};
+use las::{Read, Reader, Writer, Write, Builder, point::Format, Transform, raw::Header};
 use std::fs::File;
+use std::env;
 
 fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las::Point>>>{
     let min_x = las_file.header().bounds().min.x;
@@ -24,7 +25,7 @@ fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las
         for i in 0..grid_size {
             if point.x >= (divisions_x*i as f64) + min_x && point.x < (divisions_x*(i+1) as f64) + min_x{
                 for j in 0..grid_size{
-                    if point.y >= (divisions_y*i as f64) + min_y && point.y < (divisions_y*(i+1) as f64) + min_y {
+                    if point.y >= (divisions_y*j as f64) + min_y && point.y < (divisions_y*(j+1) as f64) + min_y {
                         grids[i][j].push(point);
                         continue 'outer;
                     }
@@ -35,27 +36,108 @@ fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las
     grids
 }
 
-fn write_las(point_cloud: &Vec<las::Point>) {
-
-    let mut header = Header::default();
-    for point in point_cloud{
-        header.add_point(point);
+fn points_above_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
+    let mut point_cloud = points.clone();
+    for i in 0..point_cloud.len(){
+        for j in 0..point_cloud[i].len(){
+            let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
+            point_cloud[i][j].retain(|point| point.z > min_z+height);
+        }
     }
+    point_cloud
+}
+
+fn filter_by_density_and_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
+    let mut point_cloud = points.clone();
+    let total_points_num = point_cloud.len() * point_cloud[0].len() * point_cloud[0][0].len();
+    let grid_area = (point_cloud.len() * point_cloud[0].len()) as f64;
+    let density = total_points_num as f64 / grid_area;
+    let threshold = (2.*density).sqrt();
+    for i in 0..point_cloud.len(){
+        for j in 0..point_cloud[i].len(){
+            let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
+            let max_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
+            let count = point_cloud[i][j].len();
+            
+            if (count as f64) < threshold {
+                continue;
+            }
+
+            else if max_z - min_z > height {
+                point_cloud[i][j].clear();
+            }
+        }
+    }
+    point_cloud
+}
+
+fn cell2las(point_cloud: &Vec<las::Point>, point_format: u8) {
+
+    let mut builder = Builder::default();
+    let transform = Transform { scale: 0.01, offset: 0. };
+    let scales = las::Vector{x:transform, y:transform, z:transform};
+    builder.transforms = scales;
+    builder.point_format = Format::new(point_format).unwrap();
 
     let file = File::create("/home/tury/Escritorio/output.las").unwrap();
-    let mut writer = Writer::new(file, Default::default()).unwrap();
+    let mut writer = Writer::new(file, builder.into_header().unwrap()).unwrap();
 
     for point in point_cloud{
-        println!("{:?}",point);
         writer.write(point.clone()).unwrap();
     }
-    println!("done");
+    writer.close().unwrap();
 
 }
 
+fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, point_format: u8, output_path: &str) {
+
+    let mut raw_header = Header::default();
+    raw_header.x_scale_factor = 0.001;
+    raw_header.y_scale_factor = 0.001;
+    raw_header.z_scale_factor = 0.001;    
+
+    let mut builder = Builder::new(raw_header).unwrap();
+    let transform = Transform { scale: 10., offset: 0. };
+    let scales = las::Vector{x:transform, y:transform, z:transform};
+    builder.transforms = scales;
+    builder.point_format = Format::new(point_format).unwrap();
+
+   let mut writer = Writer::from_path(output_path, builder.into_header().unwrap()).unwrap();
+
+    for i in 0..point_cloud.len(){
+        for j in 0..point_cloud[i].len(){
+            if point_cloud[i][j].len() > 0{
+                for point in &point_cloud[i][j]{
+                    let mut point = point.clone();
+                    if point.return_number > 5 {
+                        point.return_number = 5;
+                    }
+                    point.x *= 1000.;
+                    point.y *= 1000.;
+                    point.z *= 1000.;
+                    writer.write(point.clone()).unwrap();
+                }
+            }
+        }
+    }
+}
+
 fn main() {
-    let mut reader = Reader::from_path("../data/input.las").unwrap();
-    let gridded = grid_division(&mut reader, 50);
-    write_las(&gridded[0][0]);   
+    let args: Vec<String> = env::args().collect();
+    
+    let mut reader = match Reader::from_path(&args[1]) {
+        Ok(reader) => reader,
+        Err(err) => {
+            println!("{:?}", err);
+            return;
+        }
+    };
+    
+    let header = reader.header();
+    let format = header.point_format().to_u8().unwrap();
+    let gridded = grid_division(&mut reader, 60);
+    let above = points_above_height(&gridded, 13.);
+    let filtered = filter_by_density_and_height(&above, 16.);
+    grid2las(&filtered, format, &args[2]);   
 
 }
