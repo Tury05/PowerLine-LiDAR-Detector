@@ -2,6 +2,7 @@ use las::{Read, Reader, Writer, Write, Builder, point::Format, Transform, raw::H
 use std::fs::File;
 use std::env;
 
+// Divide the point cloud into grid of size MxM cells
 fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las::Point>>>{
     let min_x = las_file.header().bounds().min.x;
     let min_y = las_file.header().bounds().min.y;
@@ -71,6 +72,7 @@ fn filter_by_density_and_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64)
     point_cloud
 }
 
+//---------------------------------------WRITING-------------------------------------------
 fn cell2las(point_cloud: &Vec<las::Point>, point_format: u8) {
 
     let mut builder = Builder::default();
@@ -121,7 +123,8 @@ fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, point_format: u8, output_pa
         }
     }
 }
-
+//----------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------
 fn main() {
     let args: Vec<String> = env::args().collect();
     
