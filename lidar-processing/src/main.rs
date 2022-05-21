@@ -37,7 +37,7 @@ fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las
     grids
 }
 
-fn points_above_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
+/*fn points_above_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
     let mut point_cloud = points.clone();
     for i in 0..point_cloud.len(){
         for j in 0..point_cloud[i].len(){
@@ -70,6 +70,47 @@ fn filter_by_density_and_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64)
         }
     }
     point_cloud
+}*/
+
+//Function to get histogram of points hegihts in each cell
+fn get_histogram(points: &Vec<las::Point>) -> Vec<(f64, usize)>{
+    let min_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::min);
+    let max_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::max);
+    
+    let diff = max_z - min_z;
+    let mut histogram = Vec::new();
+
+    for i in (0..diff.ceil() as usize).step_by(2) {
+        histogram.push((min_z + i as f64, 0));
+    }
+    
+    for point in points {
+        for i in 0..histogram.len() {
+            if point.z > histogram[i].0  && point.z <= histogram[i].0 + 2. {
+                histogram[i].1 += 1;
+                break;
+            }
+        }
+    }
+    
+    histogram
+}
+
+//Gets the histogram of all cells
+fn grid_histograms(point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<(f64, usize)>>> {
+    let mut histograms = Vec::new();
+    for i in 0..point_cloud.len(){
+        histograms.push(Vec::new());
+        for _ in 0..point_cloud[i].len() {
+            histograms[i].push(Vec::new());
+        }
+    }
+    for i in 0..point_cloud.len(){
+        for j in 0..point_cloud[i].len(){
+            histograms[i][j] = get_histogram(&point_cloud[i][j]);
+        }
+    }
+    histograms
 }
 
 //---------------------------------------WRITING-------------------------------------------
@@ -85,6 +126,10 @@ fn cell2las(point_cloud: &Vec<las::Point>, point_format: u8) {
     let mut writer = Writer::new(file, builder.into_header().unwrap()).unwrap();
 
     for point in point_cloud{
+        let mut point = point.clone();
+        if point.return_number > 5 {
+            point.return_number = 5;
+        }
         writer.write(point.clone()).unwrap();
     }
     writer.close().unwrap();
@@ -139,8 +184,19 @@ fn main() {
     let header = reader.header();
     let format = header.point_format().to_u8().unwrap();
     let gridded = grid_division(&mut reader, 60);
-    let above = points_above_height(&gridded, 13.);
-    let filtered = filter_by_density_and_height(&above, 16.);
-    grid2las(&filtered, format, &args[2]);   
-
+    let histogram = get_histogram(&gridded[0][20]);
+    println!("{:?}", histogram);
+    cell2las(&gridded[0][20], format);
+    //let above = points_above_height(&gridded, 13.);
+    //let filtered = filter_by_density_and_height(&above, 16.);
+    //grid2las(&filtered, format, &args[2]);   
 }
+
+/*  IDEAS */
+// Usar detector de suelo del PDAL
+
+// HISTOGRAMA ADAPTATIVO POR ALTURAS
+//      1. Pillar altura minima y maxima y crear histograma con salto de 2
+//      2. Marcar casilla powerline a partir de la forma del histograma
+
+// Marcar como candidatas casillas con mucha inclinacion (Suelo con mucha desviacion tipica de altura)
