@@ -1,2 +1,0 @@
-SMRF: 8.16, 62.7% (Mejor opcion)
-PMF: 7.8, 49%
