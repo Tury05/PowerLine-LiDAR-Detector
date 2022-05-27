@@ -1,4 +1,4 @@
-use las::{Read, Reader, Writer, Write, Builder, point::Format, Transform, raw::Header};
+use las::{Read, Reader, Writer, Write, Builder, point::Format, Transform, raw::Header, point::Classification};
 use std::fs::File;
 use std::env;
 
@@ -36,7 +36,7 @@ fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las
     }
     grids
 }
-
+//-----------------------------------------------------------------------------------------------
 /*fn points_above_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
     let mut point_cloud = points.clone();
     for i in 0..point_cloud.len(){
@@ -71,6 +71,8 @@ fn filter_by_density_and_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64)
     }
     point_cloud
 }*/
+
+//---------------------------------------Histograms-------------------------------------------
 
 //Function to get histogram of points hegihts in each cell
 fn get_histogram(points: &Vec<las::Point>) -> Vec<(f64, usize)>{
@@ -111,6 +113,26 @@ fn grid_histograms(point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<(f64,
         }
     }
     histograms
+}
+
+//--------------------------------------------------------------------------------------------
+
+fn filter_cell(points: &mut Vec<las::Point>, height_diff: f64, power_min_density: usize, below_density_threshold: usize) {
+    let max_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::max);
+    let count_power = points.iter().filter(|p| p.z > max_z - height_diff).count();
+    let count_below = points.iter().filter(|p| ((p.z < max_z - height_diff) && (p.z > max_z - (height_diff + 5.)))).count();
+
+    if count_power < power_min_density || count_below > below_density_threshold {
+        points.clear();
+    }
+}
+
+fn filter_cells(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, height_diff: f64, power_min_density: usize, below_density_threshold: usize) {
+    for i in 0..point_cloud.len(){
+        for j in 0..point_cloud[i].len(){
+            filter_cell(&mut point_cloud[i][j], height_diff, power_min_density, below_density_threshold);
+        }
+    }
 }
 
 //---------------------------------------WRITING-------------------------------------------
@@ -183,13 +205,15 @@ fn main() {
     
     let header = reader.header();
     let format = header.point_format().to_u8().unwrap();
-    let gridded = grid_division(&mut reader, 60);
-    let histogram = get_histogram(&gridded[0][20]);
-    println!("{:?}", histogram);
-    cell2las(&gridded[0][20], format);
+    let mut gridded = grid_division(&mut reader, 60);
+    //let histogram = get_histogram(&gridded[0][5]);
+    //println!("{:?}", histogram);
+    //filter_cell(&mut gridded[0][5], 10., 10, 50);
+    filter_cells(&mut gridded, 10., 10, 50);
+    //cell2las(&gridded[0][5], format);
     //let above = points_above_height(&gridded, 13.);
     //let filtered = filter_by_density_and_height(&above, 16.);
-    //grid2las(&filtered, format, &args[2]);   
+    grid2las(&gridded, format, &args[2]);   
 }
 
 /*  IDEAS */
