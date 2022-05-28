@@ -51,10 +51,21 @@ checksum = "11ad5c64b64e3b3984f12078f2e4ceb6ed62702a34d297141a69af6bce259b7f"
 dependencies = [
  "byteorder",
  "chrono",
+ "laz",
  "log",
  "num-traits",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "laz"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df563a6d5c8db0f366698780c5d92e81ef7c9e68a1c1a1c9183ca0f4cb421eab"
+dependencies = [
+ "byteorder",
+ "num-traits",
 ]
 
 [[package]]

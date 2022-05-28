@@ -2,15 +2,14 @@ NO_GROUND = """
 [
     {
         "type":"readers.las",
-        "filename":"./data/input.las"
+        "filename":"./data/lux_2169.laz"
     },
     {
         "type":"filters.smrf"
     },
     {
         "type":"writers.las",
-        "filename":"./data/no_ground_smrf.las",
-        "where":"Classification == 1"
+        "filename":"./data/input3_ground.laz"
     }
 ]"""
 
@@ -116,14 +115,14 @@ TREES = """
 
 
 import pdal
-import lidar2D
 
 def main():
-    """ground = pdal.Pipeline(NO_GROUND)
+    ground = pdal.Pipeline(NO_GROUND)
     
     _ = ground.execute()
 
-    text = pdal.Pipeline(LAS2TXT)
+    
+    """text = pdal.Pipeline(LAS2TXT)
     _ = text.execute()
 
     lidar2D.main()
@@ -141,11 +140,11 @@ def main():
 
     k_nearest = pdal.Pipeline(K_NEAREST)
     
-    _ = k_nearest.execute()"""
+    _ = k_nearest.execute()
 
     trees = pdal.Pipeline(TREES)
     
-    _ = trees.execute()
+    _ = trees.execute()"""
 
 if __name__ == '__main__':
     main()

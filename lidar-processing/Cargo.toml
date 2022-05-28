@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-las = "0.7.6"
+las = {version = "0.7.6", features = ["laz"]}
 arrsac = "0.10.0"

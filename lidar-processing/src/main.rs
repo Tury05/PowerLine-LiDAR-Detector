@@ -1,4 +1,4 @@
-use las::{Read, Reader, Writer, Write, Builder, point::Format, Transform, raw::Header, point::Classification};
+use las::{Read, Reader, Writer, Write, point::Classification, raw};
 use std::fs::File;
 use std::env;
 
@@ -36,42 +36,6 @@ fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las
     }
     grids
 }
-//-----------------------------------------------------------------------------------------------
-/*fn points_above_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
-    let mut point_cloud = points.clone();
-    for i in 0..point_cloud.len(){
-        for j in 0..point_cloud[i].len(){
-            let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
-            point_cloud[i][j].retain(|point| point.z > min_z+height);
-        }
-    }
-    point_cloud
-}
-
-fn filter_by_density_and_height(points: &Vec<Vec<Vec<las::Point>>>, height: f64) -> Vec<Vec<Vec<las::Point>>> {
-    let mut point_cloud = points.clone();
-    let total_points_num = point_cloud.len() * point_cloud[0].len() * point_cloud[0][0].len();
-    let grid_area = (point_cloud.len() * point_cloud[0].len()) as f64;
-    let density = total_points_num as f64 / grid_area;
-    let threshold = (2.*density).sqrt();
-    for i in 0..point_cloud.len(){
-        for j in 0..point_cloud[i].len(){
-            let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
-            let max_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
-            let count = point_cloud[i][j].len();
-            
-            if (count as f64) < threshold {
-                continue;
-            }
-
-            else if max_z - min_z > height {
-                point_cloud[i][j].clear();
-            }
-        }
-    }
-    point_cloud
-}*/
-
 //---------------------------------------Histograms-------------------------------------------
 
 //Function to get histogram of points hegihts in each cell
@@ -115,63 +79,107 @@ fn grid_histograms(point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<(f64,
     histograms
 }
 
-//--------------------------------------------------------------------------------------------
+//Euclidean distance between two points
+fn euclidean_distance(point1: &las::Point, point2: &las::Point) -> f64 {
+    let x_diff = point1.x - point2.x;
+    let y_diff = point1.y - point2.y;
+    let z_diff = point1.z - point2.z;
+    (x_diff*x_diff + y_diff*y_diff + z_diff*z_diff).sqrt()
+}
 
-fn filter_cell(points: &mut Vec<las::Point>, height_diff: f64, power_min_density: usize, below_density_threshold: usize) {
-    let max_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::max);
-    let count_power = points.iter().filter(|p| p.z > max_z - height_diff).count();
-    let count_below = points.iter().filter(|p| ((p.z < max_z - height_diff) && (p.z > max_z - (height_diff + 5.)))).count();
+//Check if point is noise
+fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usize) -> bool {
+    let mut count = 0;
+    let mut noise = true;
+    for i in 0..cell.len() {
+        if &cell[i] != point && (euclidean_distance(point, &cell[i]) < epsilon) {
+            count += 1;
+            if count >= limit {
+                noise = false;
+                break;
+            }
+        }
+    }
+    noise
+}
 
-    if count_power < power_min_density || count_below > below_density_threshold {
-        points.clear();
+fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, down_epsilon:f64, down_limit: usize) {
+    for i in 0..point_cloud.len() {
+        for j in 0..point_cloud[i].len() {
+            loop {
+                let max_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
+                let highest_point = point_cloud[i][j].iter().find(|p| p.z == max_z).unwrap();
+                if is_noise(&highest_point, &point_cloud[i][j], up_epsilon, up_limit) {
+                    let index = point_cloud[i][j].iter().position(|p| p == highest_point).unwrap();
+                    point_cloud[i][j].remove(index);
+                }
+                else {
+                    break;
+                }
+            }
+            loop {
+                let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
+                let lowest_point = point_cloud[i][j].iter().find(|p| p.z == min_z).unwrap();
+                if is_noise(&lowest_point, &point_cloud[i][j], down_epsilon, down_limit) {
+                    let index = point_cloud[i][j].iter().position(|p| p == lowest_point).unwrap();
+                    point_cloud[i][j].remove(index);
+                }
+                else {
+                    break;
+                }
+            }
+        }
     }
 }
 
-fn filter_cells(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, height_diff: f64, power_min_density: usize, below_density_threshold: usize) {
+//--------------------------------------------------------------------------------------------
+
+//Filter cell considering the height distribution of points
+fn filter_cell(point_cell: &mut Vec<las::Point>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) {
+    let max_z = point_cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
+    let count_power = point_cell.iter().filter(|p| p.z > max_z - height_diff).count();
+    let count_middle = point_cell.iter().filter(|p| ((p.z < max_z - height_diff) && (p.z > max_z - (height_diff + below_diff)))).count();
+    let count_below = point_cell.iter().filter(|p| p.z < max_z - (height_diff + below_diff)).count();
+
+    if count_power < power_min_density || count_middle > middle_density_threshold || count_below < 5{
+        point_cell.clear();
+    }
+}
+
+//Filter all cells
+fn filter_cells(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) {   
     for i in 0..point_cloud.len(){
         for j in 0..point_cloud[i].len(){
-            filter_cell(&mut point_cloud[i][j], height_diff, power_min_density, below_density_threshold);
+            filter_cell(&mut point_cloud[i][j], height_diff, below_diff, power_min_density, middle_density_threshold);
         }
     }
 }
 
 //---------------------------------------WRITING-------------------------------------------
-fn cell2las(point_cloud: &Vec<las::Point>, point_format: u8) {
+//Writes into file a single cell
+fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &String, ground: bool) {   
+    let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
 
-    let mut builder = Builder::default();
-    let transform = Transform { scale: 0.01, offset: 0. };
-    let scales = las::Vector{x:transform, y:transform, z:transform};
-    builder.transforms = scales;
-    builder.point_format = Format::new(point_format).unwrap();
-
-    let file = File::create("/home/tury/Escritorio/output.las").unwrap();
-    let mut writer = Writer::new(file, builder.into_header().unwrap()).unwrap();
-
-    for point in point_cloud{
+    for point in point_cell{
         let mut point = point.clone();
         if point.return_number > 5 {
             point.return_number = 5;
         }
-        writer.write(point.clone()).unwrap();
+        if !ground {
+            if point.classification != Classification::Ground{
+                writer.write(point.clone()).unwrap();
+            }
+        }
+        else{
+            writer.write(point.clone()).unwrap();
+        }
     }
     writer.close().unwrap();
-
 }
 
-fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, point_format: u8, output_path: &str) {
-
-    let mut raw_header = Header::default();
-    raw_header.x_scale_factor = 0.001;
-    raw_header.y_scale_factor = 0.001;
-    raw_header.z_scale_factor = 0.001;    
-
-    let mut builder = Builder::new(raw_header).unwrap();
-    let transform = Transform { scale: 10., offset: 0. };
-    let scales = las::Vector{x:transform, y:transform, z:transform};
-    builder.transforms = scales;
-    builder.point_format = Format::new(point_format).unwrap();
-
-   let mut writer = Writer::from_path(output_path, builder.into_header().unwrap()).unwrap();
+//Writes into file all point cloud
+fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, output: &String, ground: bool) {
+    let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
 
     for i in 0..point_cloud.len(){
         for j in 0..point_cloud[i].len(){
@@ -181,46 +189,55 @@ fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, point_format: u8, output_pa
                     if point.return_number > 5 {
                         point.return_number = 5;
                     }
-                    point.x *= 1000.;
-                    point.y *= 1000.;
-                    point.z *= 1000.;
-                    writer.write(point.clone()).unwrap();
+                    if !ground {
+                        if point.classification != Classification::Ground{
+                            writer.write(point.clone()).unwrap();
+                        }
+                    }
+                    else{
+                        writer.write(point.clone()).unwrap();
+                    }
                 }
             }
         }
     }
+    writer.close().unwrap();
 }
 //----------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
-    let mut reader = match Reader::from_path(&args[1]) {
+    let input = &args[1];
+    let output = &args[2];
+    let mut ground = true;
+
+    if args.len() > 3 {
+        if &args[3] == "-n" {
+            ground = false;
+        }
+        else {
+            println!("Invalid arguments");
+            return;
+        }
+    }
+
+    let mut reader = match Reader::from_path(input) {
         Ok(reader) => reader,
         Err(err) => {
             println!("{:?}", err);
             return;
         }
     };
+
+    let mut file = File::open(input).unwrap();
+    let raw_header = raw::Header::read_from(&mut file).unwrap(); //Leemos el header original para quedarnos con los datos de version, padding, scales...
     
-    let header = reader.header();
-    let format = header.point_format().to_u8().unwrap();
     let mut gridded = grid_division(&mut reader, 60);
-    //let histogram = get_histogram(&gridded[0][5]);
-    //println!("{:?}", histogram);
-    //filter_cell(&mut gridded[0][5], 10., 10, 50);
-    filter_cells(&mut gridded, 10., 10, 50);
-    //cell2las(&gridded[0][5], format);
-    //let above = points_above_height(&gridded, 13.);
-    //let filtered = filter_by_density_and_height(&above, 16.);
-    grid2las(&gridded, format, &args[2]);   
+    clean_noise(&mut gridded, 20., 2, 5., 15);
+    filter_cells(&mut gridded, 9., 4.,5, 50);
+    grid2las(&gridded, raw_header, output, ground);
 }
 
-/*  IDEAS */
-// Usar detector de suelo del PDAL
-
-// HISTOGRAMA ADAPTATIVO POR ALTURAS
-//      1. Pillar altura minima y maxima y crear histograma con salto de 2
-//      2. Marcar casilla powerline a partir de la forma del histograma
-
-// Marcar como candidatas casillas con mucha inclinacion (Suelo con mucha desviacion tipica de altura)
+/*  POR HACER */
+//1. Necesario hacer concurrentes las funciones de limpieza de ruido y filtrado
+//2. Como detecto ahora las lineas? (RANSAC O TRANSFORMADA DE HOUGH)

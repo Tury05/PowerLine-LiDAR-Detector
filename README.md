@@ -1,12 +1,26 @@
 # TFG-LiDAR-Processing
 
 # Avances
-- Se ha dividido la nube en celdas.
-- Se ha hecho histograma de cada celda para su posterior analisis
+- Función de limpieza de ruido
+- Filtrado por distribución de alturas
 
 # Cosas por hacer
-- Analizar patrones de los histogramas 
-- Crear función que en base a estos patrones declare si una celda contiene líneas electrica o no
+- Detectar lineas rectas
+- Posibilidad de lineas en barrancos (No se ha probado este caso)
+- Concurrencia y paralelismo
 
-# Ideas
--
+# Ejecucion
+
+Se ha implementado el flag "-n" en el caso de que se quiera que el archivo de salida no incluya los puntos pertenecientes al suelo.
+
+
+Ejemplo de ejecución incluyendo los puntos "ground" en el archivo de salida:
+```
+cargo run <input.las> <output.las>
+```
+
+Ejemplo de ejecución eliminando los puntos "ground" en el archivo de salida:
+```
+cargo run <input.las> <output.las> -n
+```
+
