@@ -11,15 +11,7 @@
 
 # Ejecucion
 
-Se ha implementado el flag "-n" en el caso de que se quiera que el archivo de salida no incluya los puntos pertenecientes al suelo.
-
-
-Ejemplo de ejecución incluyendo los puntos "ground" en el archivo de salida:
-```
-cargo run <input.las> <output.las>
-```
-
-Ejemplo de ejecución eliminando los puntos "ground" en el archivo de salida:
+El programa se ejecuta con el siguiente comando:
 ```
 cargo run <input.las> <output.las> -n
 ```

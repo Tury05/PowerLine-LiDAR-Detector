@@ -135,29 +135,40 @@ fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_
 //--------------------------------------------------------------------------------------------
 
 //Filter cell considering the height distribution of points
-fn filter_cell(point_cell: &mut Vec<las::Point>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) {
+fn filter_cell(point_cell: &Vec<las::Point>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) -> Vec<las::Point>{
+    let mut cell = Vec::new();
+    
     let max_z = point_cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
     let count_power = point_cell.iter().filter(|p| p.z > max_z - height_diff).count();
     let count_middle = point_cell.iter().filter(|p| ((p.z < max_z - height_diff) && (p.z > max_z - (height_diff + below_diff)))).count();
     let count_below = point_cell.iter().filter(|p| p.z < max_z - (height_diff + below_diff)).count();
 
-    if count_power < power_min_density || count_middle > middle_density_threshold || count_below < 5{
-        point_cell.clear();
+    if !(count_power < power_min_density || count_middle > middle_density_threshold || count_below < 5){
+        let power_point = point_cell.iter().filter(|p| p.z > max_z - height_diff);
+        for point in power_point {
+            let mut point_copy = point.clone();
+            point_copy.classification = las::point::Classification::Reserved(64);
+            cell.push(point_copy);
+        }
     }
+    cell
 }
 
 //Filter all cells
-fn filter_cells(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) {   
+fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) -> Vec<Vec<Vec<las::Point>>> {   
+    let mut filtered_point_cloud = Vec::new();
     for i in 0..point_cloud.len(){
+        filtered_point_cloud.push(Vec::new());
         for j in 0..point_cloud[i].len(){
-            filter_cell(&mut point_cloud[i][j], height_diff, below_diff, power_min_density, middle_density_threshold);
+            filtered_point_cloud[i].push(filter_cell(&point_cloud[i][j], height_diff, below_diff, power_min_density, middle_density_threshold));
         }
     }
+    filtered_point_cloud
 }
 
 //---------------------------------------WRITING-------------------------------------------
 //Writes into file a single cell
-fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &String, ground: bool) {   
+fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &String) {   
     let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
 
     for point in point_cell{
@@ -165,12 +176,7 @@ fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &Stri
         if point.return_number > 5 {
             point.return_number = 5;
         }
-        if !ground {
-            if point.classification != Classification::Ground{
-                writer.write(point.clone()).unwrap();
-            }
-        }
-        else{
+        if point.classification == las::point::Classification::Reserved(64) {
             writer.write(point.clone()).unwrap();
         }
     }
@@ -178,7 +184,7 @@ fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &Stri
 }
 
 //Writes into file all point cloud
-fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, output: &String, ground: bool) {
+fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, output: &String) {
     let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
 
     for i in 0..point_cloud.len(){
@@ -189,12 +195,7 @@ fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, ou
                     if point.return_number > 5 {
                         point.return_number = 5;
                     }
-                    if !ground {
-                        if point.classification != Classification::Ground{
-                            writer.write(point.clone()).unwrap();
-                        }
-                    }
-                    else{
+                    if point.classification == las::point::Classification::Reserved(64) {
                         writer.write(point.clone()).unwrap();
                     }
                 }
@@ -209,17 +210,6 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let input = &args[1];
     let output = &args[2];
-    let mut ground = true;
-
-    if args.len() > 3 {
-        if &args[3] == "-n" {
-            ground = false;
-        }
-        else {
-            println!("Invalid arguments");
-            return;
-        }
-    }
 
     let mut reader = match Reader::from_path(input) {
         Ok(reader) => reader,
@@ -234,10 +224,11 @@ fn main() {
     
     let mut gridded = grid_division(&mut reader, 60);
     clean_noise(&mut gridded, 20., 2, 5., 15);
-    filter_cells(&mut gridded, 9., 4.,5, 50);
-    grid2las(&gridded, raw_header, output, ground);
+    let filtered = filter_cells(&mut gridded, 9., 4.,5, 50);
+    grid2las(&filtered, raw_header, output);
 }
 
 /*  POR HACER */
-//1. Necesario hacer concurrentes las funciones de limpieza de ruido y filtrado
-//2. Como detecto ahora las lineas? (RANSAC O TRANSFORMADA DE HOUGH)
+//1. Medir tiempos
+//2. Necesario hacer concurrentes las funciones de limpieza de ruido y filtrado
+//3. Como detecto ahora las lineas? (RANSAC O TRANSFORMADA DE HOUGH)
