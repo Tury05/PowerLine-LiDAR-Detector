@@ -87,14 +87,23 @@ fn euclidean_distance(point1: &las::Point, point2: &las::Point) -> f64 {
     (x_diff*x_diff + y_diff*y_diff + z_diff*z_diff).sqrt()
 }
 
+fn mean_zvalue(points: &Vec<las::Point>) -> f64 {
+    let mut sum = 0.0;
+    for point in points {
+        sum += point.z;
+    }
+    sum / points.len() as f64
+}
+
 //Check if point is noise
-fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usize) -> bool {
+fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usize, diff_threshold: f64) -> bool {
     let mut count = 0;
     let mut noise = true;
+    let mean_z = mean_zvalue(&cell);
     for i in 0..cell.len() {
         if &cell[i] != point && (euclidean_distance(point, &cell[i]) < epsilon) {
             count += 1;
-            if count >= limit {
+            if count >= limit && (point.z - mean_z).abs() < diff_threshold {
                 noise = false;
                 break;
             }
@@ -103,13 +112,13 @@ fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usi
     noise
 }
 
-fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, down_epsilon:f64, down_limit: usize) {
+fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, down_epsilon:f64, down_limit: usize, diff_threshold: f64) {
     for i in 0..point_cloud.len() {
         for j in 0..point_cloud[i].len() {
             loop {
                 let max_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
                 let highest_point = point_cloud[i][j].iter().find(|p| p.z == max_z).unwrap();
-                if is_noise(&highest_point, &point_cloud[i][j], up_epsilon, up_limit) {
+                if is_noise(&highest_point, &point_cloud[i][j], up_epsilon, up_limit, diff_threshold) {
                     let index = point_cloud[i][j].iter().position(|p| p == highest_point).unwrap();
                     point_cloud[i][j].remove(index);
                 }
@@ -120,7 +129,7 @@ fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_
             loop {
                 let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
                 let lowest_point = point_cloud[i][j].iter().find(|p| p.z == min_z).unwrap();
-                if is_noise(&lowest_point, &point_cloud[i][j], down_epsilon, down_limit) {
+                if is_noise(&lowest_point, &point_cloud[i][j], down_epsilon, down_limit, diff_threshold) {
                     let index = point_cloud[i][j].iter().position(|p| p == lowest_point).unwrap();
                     point_cloud[i][j].remove(index);
                 }
@@ -134,8 +143,9 @@ fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_
 
 //--------------------------------------------------------------------------------------------
 
-//Filter cell considering the height distribution of points
-fn filter_cell(point_cell: &Vec<las::Point>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) -> Vec<las::Point>{
+//Antigua función de filtrado
+/* 
+fn filter_cell(point_cell: &Vec<las::Point>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) -> Vec<las::Point> {
     let mut cell = Vec::new();
     
     let max_z = point_cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
@@ -143,27 +153,89 @@ fn filter_cell(point_cell: &Vec<las::Point>, height_diff: f64, below_diff: f64, 
     let count_middle = point_cell.iter().filter(|p| ((p.z < max_z - height_diff) && (p.z > max_z - (height_diff + below_diff)))).count();
     let count_below = point_cell.iter().filter(|p| p.z < max_z - (height_diff + below_diff)).count();
 
-    if !(count_power < power_min_density || count_middle > middle_density_threshold || count_below < 5){
+    if !(count_power < power_min_density || count_middle > middle_density_threshold /*|| count_below < 5*/){
         let power_point = point_cell.iter().filter(|p| p.z > max_z - height_diff);
         for point in power_point {
             let mut point_copy = point.clone();
-            point_copy.classification = las::point::Classification::Reserved(64);
+            point_copy.classification = las::point::Classification::WireConductor;
             cell.push(point_copy);
+        }
+    }
+    cell
+}*/
+
+fn filter_height_density(point_cell: &Vec<las::Point>, min_density: usize, empty:usize , non_empty:usize , end: usize) -> Vec<las::Point> {
+    let mut cell = Vec::new();
+    let mut candidate = false;
+    let mut count_non_empty = 0;
+    let mut count_empty = 0;
+    
+    let max_z = point_cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
+    let min_z = point_cell.iter().map(|p| p.z).fold(f64::NAN, f64::min);
+    for i in 0..end {
+        if (max_z - (i as f64)) > min_z {
+            let density = point_cell.iter().filter
+                    (|p| p.z <= max_z - (i as f64) && p.z > max_z - (i as f64 + 1.)).count();
+            
+            if density > min_density {
+                count_non_empty += 1;
+                count_empty = 0;
+            
+            } else {
+                count_empty += 1;
+                count_non_empty = 0;
+            }
+            
+            if count_non_empty > non_empty {
+                break;
+            }
+            
+            if count_empty > empty {
+                candidate = true;
+                break;
+            }
+        }
+        else {
+            break;
+        }
+    }
+
+    if candidate {
+        for point in point_cell.iter().filter(|p| p.z > max_z - 20.){
+            cell.push(point.clone());
         }
     }
     cell
 }
 
 //Filter all cells
-fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, height_diff: f64, below_diff: f64, power_min_density: usize, middle_density_threshold: usize) -> Vec<Vec<Vec<las::Point>>> {   
+fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, min_density: usize, empty:usize , non_empty:usize , end: usize) -> Vec<Vec<Vec<las::Point>>> {   
     let mut filtered_point_cloud = Vec::new();
     for i in 0..point_cloud.len(){
         filtered_point_cloud.push(Vec::new());
         for j in 0..point_cloud[i].len(){
-            filtered_point_cloud[i].push(filter_cell(&point_cloud[i][j], height_diff, below_diff, power_min_density, middle_density_threshold));
+            //filtered_point_cloud[i].push(filter_cell(&point_cloud[i][j], height_diff, below_diff, power_min_density, middle_density_threshold));
+            filtered_point_cloud[i].push(filter_height_density(&point_cloud[i][j], min_density, empty, non_empty, end));
         }
     }
     filtered_point_cloud
+}
+
+//FALTAN ANALIZAR BORDES
+fn reconstruct(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+    let mut reconstructed = filtered.clone();
+    
+    for i in 1..filtered.len() - 1{
+        for j in 1..filtered[i].len() - 1 {
+            if filtered[i][j].len() == 0 && (filtered[i+1][j].len() > 0
+                                            || filtered[i-1][j].len() > 0
+                                            || filtered[i][j+1].len() > 0
+                                            || filtered[i][j-1].len() > 0) {
+                reconstructed[i][j] = original[i][j].clone();
+            }
+        }
+    }
+    reconstructed
 }
 
 //---------------------------------------WRITING-------------------------------------------
@@ -176,9 +248,9 @@ fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &Stri
         if point.return_number > 5 {
             point.return_number = 5;
         }
-        if point.classification == las::point::Classification::Reserved(64) {
+        //if point.classification == las::point::Classification::WireConductor {
             writer.write(point.clone()).unwrap();
-        }
+        //}
     }
     writer.close().unwrap();
 }
@@ -195,7 +267,7 @@ fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, ou
                     if point.return_number > 5 {
                         point.return_number = 5;
                     }
-                    if point.classification == las::point::Classification::Reserved(64) {
+                    if point.classification != Classification::Ground {
                         writer.write(point.clone()).unwrap();
                     }
                 }
@@ -223,12 +295,13 @@ fn main() {
     let raw_header = raw::Header::read_from(&mut file).unwrap(); //Leemos el header original para quedarnos con los datos de version, padding, scales...
     
     let mut gridded = grid_division(&mut reader, 60);
-    clean_noise(&mut gridded, 20., 2, 5., 15);
-    let filtered = filter_cells(&mut gridded, 9., 4.,5, 50);
-    grid2las(&filtered, raw_header, output);
+    clean_noise(&mut gridded, 12., 2, 5., 15, 100.);
+    let mut filtered = filter_cells(&mut gridded, 10, 2, 5, 20);
+    let reconstructed = reconstruct(&mut filtered, &gridded);
+    grid2las(&reconstructed, raw_header, output);
 }
 
 /*  POR HACER */
 //1. Medir tiempos
 //2. Necesario hacer concurrentes las funciones de limpieza de ruido y filtrado
-//3. Como detecto ahora las lineas? (RANSAC O TRANSFORMADA DE HOUGH)
+//3. Como detecto ahora las rectas? (RANSAC?)
