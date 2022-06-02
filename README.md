@@ -13,6 +13,6 @@
 
 El programa se ejecuta con el siguiente comando:
 ```
-cargo run <input.las> <output.las> -n
+cargo run <input.las> <output.las>
 ```
 
