@@ -287,7 +287,7 @@ fn main() {
     let raw_header = raw::Header::read_from(&mut file).unwrap(); //Leemos el header original para quedarnos con los datos de version, padding, scales...
 
     let mut gridded = grid_division(&mut reader, 60);
-    clean_noise(&mut gridded, 12., 2, 5., 15, 100.);
+    // CVR // clean_noise(&mut gridded, 12., 2, 5., 15, 100.);
     remove_ground(&mut gridded);
     let mut filtered = filter_cells(&mut gridded, 10, 2, 5, 20);
     let reconstructed = reconstruct(&mut filtered, &gridded);
