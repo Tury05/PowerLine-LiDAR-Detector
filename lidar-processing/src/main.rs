@@ -227,7 +227,7 @@ fn erode(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
     
     for i in 1..filtered.len() - 1{
         for j in 1..filtered[i].len() - 1 {
-            if filtered[i][j].len() > 0 &&  // considerar también cuando la celda está vacía !! 
+            if  filtered[i][j].len() > 0 &&  
 		// At least 2 neighbours
                 ( ((filtered[i+1][j].len() > 0) as i32) + ((filtered[i-1][j].len() > 0) as i32) 
                    + ((filtered[i][j+1].len() > 0) as i32) + ((filtered[i][j-1].len() > 0) as i32) 
@@ -239,6 +239,27 @@ fn erode(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
         }
     }
     eroded
+}
+
+// CVR: dilate
+fn dilate(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+    let mut dilated = filtered.clone();
+    
+    for i in 1..filtered.len() - 1{
+        for j in 1..filtered[i].len() - 1 {
+            if  // At least 2 neighbours
+                ( ((filtered[i+1][j].len() > 0) as i32) + ((filtered[i-1][j].len() > 0) as i32) 
+                   + ((filtered[i][j+1].len() > 0) as i32) + ((filtered[i][j-1].len() > 0) as i32) 
+                ) >= 2  {
+                dilated [i][j] = original[i][j].clone();
+            } else {
+                if filtered[i][j].len() > 0 {
+                    dilated [i][j].clear();
+                }
+	    }
+        }
+    }
+    dilated
 }
 
 /*fn calculate_grid(header: raw::Header) -> usize {
@@ -313,7 +334,8 @@ fn main() {
     // CVR // let reconstructed = reconstruct(&mut filtered, &gridded);
     // CVR // grid2las(&reconstructed, raw_header, output);
     let mut eroded = erode(&mut filtered, &gridded);
-    grid2las(&mut eroded, raw_header, output);
+    let mut dilated = dilate(&mut eroded, &gridded);
+    grid2las(&mut dilated, raw_header, output);
 }
 
 /*  POR HACER */
