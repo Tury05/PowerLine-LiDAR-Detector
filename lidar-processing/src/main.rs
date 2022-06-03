@@ -221,6 +221,26 @@ fn reconstruct(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las
     reconstructed
 }
 
+// CVR: erode
+fn erode(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+    let mut eroded = filtered.clone();
+    
+    for i in 1..filtered.len() - 1{
+        for j in 1..filtered[i].len() - 1 {
+            if filtered[i][j].len() > 0 &&  // considerar también cuando la celda está vacía !! 
+		// At least 2 neighbours
+                ( ((filtered[i+1][j].len() > 0) as i32) + ((filtered[i-1][j].len() > 0) as i32) 
+                   + ((filtered[i][j+1].len() > 0) as i32) + ((filtered[i][j-1].len() > 0) as i32) 
+                ) >= 2  {
+                eroded[i][j] = original[i][j].clone();
+            } else {
+                eroded[i][j].clear();
+	    }
+        }
+    }
+    eroded
+}
+
 /*fn calculate_grid(header: raw::Header) -> usize {
 
 }*/
@@ -290,8 +310,10 @@ fn main() {
     // CVR // clean_noise(&mut gridded, 12., 2, 5., 15, 100.);
     remove_ground(&mut gridded);
     let mut filtered = filter_cells(&mut gridded, 10, 2, 5, 20);
-    let reconstructed = reconstruct(&mut filtered, &gridded);
-    grid2las(&reconstructed, raw_header, output);
+    // CVR // let reconstructed = reconstruct(&mut filtered, &gridded);
+    // CVR // grid2las(&reconstructed, raw_header, output);
+    let mut eroded = erode(&mut filtered, &gridded);
+    grid2las(&mut eroded, raw_header, output);
 }
 
 /*  POR HACER */
