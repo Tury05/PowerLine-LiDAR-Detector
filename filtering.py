@@ -1,26 +1,38 @@
-NO_GROUND = """ 
+NO_GROUND = """
 [
     {
         "type":"readers.las",
-        "filename":"/home/tury/Escritorio/lidar2019-ndp-c14-r8-ll69500-68500-epsg2169/LIDAR2019_NdP_70500_69000_EPSG2169.laz"
+        "filename":""
+    },
+    {
+        "type":"filters.range",
+        "limits":"NumberOfReturns[1:7]"
     },
     {
         "type":"filters.smrf"
     },
     {
         "type":"writers.las",
-        "filename":"./data/input6_ground.laz"
+        "filename":"",
+        "where":"Classification != 2"
     }
 ]
 """
 
-
 import pdal
+import json
+import sys
+import os
+from os import listdir
+from os.path import isdir
 
 def main():
-    ground = pdal.Pipeline(NO_GROUND)
-    
-    _ = ground.execute()
+    path = sys.argv[1]
+    if isdir(path):
+        for file in listdir(path):
+            string = NO_GROUND[:59] + sys.argv[1] + "/" + file + NO_GROUND[59:-49] + "./grounds/" + file + NO_GROUND[-49:]
+            ground = pdal.Pipeline(string)
+            _ = ground.execute()
 
 if __name__ == '__main__':
     main()

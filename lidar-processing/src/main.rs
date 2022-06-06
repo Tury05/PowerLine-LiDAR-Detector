@@ -1,15 +1,66 @@
+use las::reader::PointIterator;
 use las::{Read, Reader, Writer, Write, point::Classification, raw};
-use std::fs::File;
-use std::env;
+use std::{fs::File, fs::metadata, fs::create_dir, fs::read_dir, env, time, path::Path, ffi::OsStr};
+use std::thread;
+use std::borrow::Borrow;
+
+/*fn thread_grid(las_reader: &mut las::Reader, pos_x: usize, pos_y: usize, min_x: &f64, min_y: &f64, cell_size: &f64) -> (Vec<las::Point>, usize, usize) {
+    let mut cell = Vec::new();
+    
+    for wrapped_point in (&mut las_reader).points() {
+        let point = wrapped_point.unwrap();
+        if point.x >= (cell_size*pos_x as f64) + min_x && point.x < (cell_size*(pos_x+1) as f64) + min_x{
+            if point.y >= (cell_size*pos_y as f64) + min_y && point.y < (cell_size*(pos_y+1) as f64) + min_y {
+                cell.push(point.clone());
+            }
+        }       
+    }
+    (cell, pos_x, pos_y)
+}
 
 // Divide the point cloud into grid of size MxM cells
-fn grid_division(las_file: &mut las::Reader, grid_size:usize) -> Vec<Vec<Vec<las::Point>>>{
+fn multi_grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Vec<las::Point>>>{
+    let mut threads = vec![];
+
     let min_x = las_file.header().bounds().min.x;
     let min_y = las_file.header().bounds().min.y;
     let max_x = las_file.header().bounds().max.x;
-    let max_y = las_file.header().bounds().max.y;
-    let divisions_x = (max_x - min_x) / grid_size as f64;
-    let divisions_y = (max_y - min_y) / grid_size as f64;
+    let divisions_x = cell_size;
+
+    let grid_size = ((max_x - min_x)/divisions_x).ceil() as usize;
+
+    let mut grids:Vec<Vec<Vec<las::Point>>> = Vec::new();
+    for i in 0..grid_size{
+        grids.push(Vec::new());
+        for _ in 0..grid_size{
+            grids[i].push(Vec::new());
+        }
+    }
+
+    for i in 0..grid_size {
+        for j in 0..grid_size {
+            let mut file = las_file;
+            threads.push(thread::spawn(move || /*-> (Vec<las::Point>, usize, usize)*/ {
+                thread_grid(&mut file, i, j, &min_x, &min_y, &cell_size)
+            }));
+        }
+    }
+    for thread in threads {
+        let (cell, pos_x, pos_y) = thread.join().unwrap();
+        grids[pos_x][pos_y] = cell;
+    }
+    grids
+}*/
+
+fn grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Vec<las::Point>>>{
+    let min_x = las_file.header().bounds().min.x;
+    let min_y = las_file.header().bounds().min.y;
+    let max_x = las_file.header().bounds().max.x;
+
+    let divisions_x = cell_size;
+    let divisions_y = cell_size;
+
+    let grid_size = ((max_x - min_x)/divisions_x).ceil() as usize;
 
     let points_iter = las_file.points();
     
@@ -204,39 +255,121 @@ fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, min_density: usize, emp
     filtered_point_cloud
 }
 
-//FALTAN ANALIZAR BORDES
-fn reconstruct(filtered: & Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
-    let mut reconstructed = filtered.clone();
+// CVR: erode
+fn erode(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: i32) -> Vec<Vec<Vec<las::Point>>> {
+    if neighbourhood != 4 && neighbourhood != 8 {
+        panic!("Neighbourhood must be 4 or 8");
+    }
+
+    let mut eroded = filtered.clone();
+    let mut padded: Vec<Vec<Vec<las::Point>>> = Vec::new();
+
+    padded.push(Vec::new());
+    for _ in 0..filtered.len() + 2 {
+        padded[0].push(Vec::new());
+    }
+    for i in 0..filtered.len() {
+        let mut vector: Vec<Vec<las::Point>> = Vec::new();
+        let mut empty_vector: Vec<Vec<las::Point>> = Vec::new();
+        vector.append(&mut filtered[i].clone()); 
+        vector.append(&mut empty_vector);
+        
+        padded.push(vector);
+        padded[i+1].push(Vec::new());
+    }
+    padded.push(Vec::new());
+    for _ in 0..filtered.len() + 2 {
+        padded[filtered.len() + 1].push(Vec::new());
+    }
     
-    for i in 1..filtered.len() - 1{
-        for j in 1..filtered[i].len() - 1 {
-            if filtered[i][j].len() == 0 && (filtered[i+1][j].len() > 0
-                                            || filtered[i-1][j].len() > 0
-                                            || filtered[i][j+1].len() > 0
-                                            || filtered[i][j-1].len() > 0) {
-                reconstructed[i][j] = original[i][j].clone();
+    for i in 1..padded.len() - 1 {
+        for j in 1..padded[i].len() - 1 {
+            // At least 1 neighbour in borders
+            if  padded[i][j].len() > 0 && 
+                (i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2)) && 
+                ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
+                + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
+                ) >= 1  {
+                    eroded[i-1][j-1] = original[i-1][j-1].clone();
             }
+            
+            else if padded[i][j].len() > 0 && neighbourhood == 8  &&
+                (i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2)) &&
+                ( ((padded[i+1][j+1].len() > 0) as i32) + ((padded[i-1][j-1].len() > 0) as i32) 
+                + ((padded[i-1][j+1].len() > 0) as i32) + ((padded[i+1][j-1].len() > 0) as i32) 
+                ) >= 1  {
+                    eroded[i-1][j-1] = original[i-1][j-1].clone();
+            }
+            
+            // At least 2 neighbours in the other cells
+            else if padded[i][j].len() > 0 &&   
+                ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
+                + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
+                ) >= 2  { 
+                    eroded[i-1][j-1] = original[i-1][j-1].clone();
+            
+            }
+
+            else if padded[i][j].len() > 0 && neighbourhood == 8 && 
+                ( ((padded[i+1][j+1].len() > 0) as i32) + ((padded[i-1][j-1].len() > 0) as i32) 
+                + ((padded[i-1][j+1].len() > 0) as i32) + ((padded[i+1][j-1].len() > 0) as i32) 
+                ) >= 2  { 
+                    eroded[i-1][j-1] = original[i-1][j-1].clone();
+            
+            }
+
+            else {
+                eroded[i-1][j-1].clear();
+	        }
         }
     }
-    reconstructed
+    eroded
 }
 
-/*fn calculate_grid(header: raw::Header) -> usize {
-
-}*/
-
-fn remove_ground(point_cloud: &mut Vec<Vec<Vec<las::Point>>>) {
-
-    for i in 0..point_cloud.len() {
-        for j in 0..point_cloud[i].len() {
-            point_cloud[i][j].retain(|p| p.classification !=  Classification::Ground);
-        }
+fn dilate2(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: i32) -> Vec<Vec<Vec<las::Point>>> {
+    if neighbourhood != 4 && neighbourhood != 8 {
+        panic!("Neighbourhood must be 4 or 8");
     }
+
+    let mut dilated = filtered.clone();
+    
+    for i in 0..filtered.len()  {
+        for j in 0..filtered[i].len()  {
+            if filtered[i][j].len() > 0 {
+                dilated [i][j] = original[i][j].clone();
+                if i > 0 {
+                    dilated[i-1][j] = original[i-1][j].clone();
+                    if j > 0{
+                        dilated[i][j-1] = original[i][j-1].clone();
+                        if neighbourhood == 8 {
+                            dilated[i-1][j-1] = original[i-1][j-1].clone();
+                        }     
+                    }
+                    if j < filtered.len()-1 && neighbourhood == 8 {
+                        dilated[i-1][j+1] = original[i-1][j+1].clone();
+                    }
+                }
+                if i < filtered.len()-1 {
+                    dilated[i+1][j] = original[i+1][j].clone();
+                    if j < filtered.len()-1 {
+                        dilated[i][j+1] = original[i][j+1].clone();
+                        if neighbourhood == 8 {
+                            dilated[i+1][j+1] = original[i+1][j+1].clone(); 
+                        }
+                    }
+                    if j > 0 && neighbourhood == 8 {
+                        dilated[i+1][j-1] = original[i+1][j-1].clone();
+                    }
+                }
+            }
+	    }
+    }
+    dilated
 }
 
 //---------------------------------------WRITING-------------------------------------------
 //Writes into file a single cell
-fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &String) {   
+fn write_cell_las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &String) {   
     let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
 
     for point in point_cell{
@@ -250,7 +383,7 @@ fn cell2las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &Stri
 }
 
 //Writes into file all point cloud
-fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, output: &String) {
+fn write_las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, output: &String) {
     let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
 
     for i in 0..point_cloud.len(){
@@ -268,13 +401,23 @@ fn grid2las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, ou
     }
     writer.close().unwrap();
 }
-//----------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let input = &args[1];
-    let output = &args[2];
 
+fn write_csv(point_cloud: &Vec<Vec<Vec<las::Point>>>, output: &String) {
+    let mut writer = csv::Writer::from_path(output).unwrap();
+    for i in 0..point_cloud.len(){
+        for j in 0..point_cloud[i].len(){
+            if point_cloud[i][j].len() > 0{
+                for point in &point_cloud[i][j]{
+                    writer.write_record(&[format!("{}", point.x), format!("{}", point.y), format!("{}", point.z)]).unwrap();
+                }
+            }
+        }
+    }
+}
+//----------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------
+
+fn execute_algorithms(input: &String, output: &String) {
     let mut reader = match Reader::from_path(input) {
         Ok(reader) => reader,
         Err(err) => {
@@ -286,16 +429,72 @@ fn main() {
     let mut file = File::open(input).unwrap();
     let raw_header = raw::Header::read_from(&mut file).unwrap(); //Leemos el header original para quedarnos con los datos de version, padding, scales...
 
-    let mut gridded = grid_division(&mut reader, 60);
-    clean_noise(&mut gridded, 12., 2, 5., 15, 100.);
-    remove_ground(&mut gridded);
-    let mut filtered = filter_cells(&mut gridded, 10, 2, 5, 20);
-    let reconstructed = reconstruct(&mut filtered, &gridded);
-    grid2las(&reconstructed, raw_header, output);
+    println!("----------Processing file: {}----------", input);
+   
+    let now = time::Instant::now();
+    let gridded = grid_division(&mut reader, 16.7);
+    println!("Grid division time: {:?} millisecs.", now.elapsed().as_millis());
+   
+    let now = time::Instant::now();
+    let filtered = filter_cells(&gridded, 10, 2, 5, 20);
+    println!("Filtering time: {:?} millisecs.", now.elapsed().as_millis());
+   
+    let now = time::Instant::now();
+    let eroded4 = erode(&filtered, &gridded, 4);
+    let eroded8 = erode(&eroded4, &gridded, 8);
+    println!("Erosion time: {:?} millisecs.", now.elapsed().as_millis());
+   
+    let now = time::Instant::now();
+    let dilated = dilate2(&eroded8, &gridded, 8);
+    println!("Dilation time: {:?} millisecs.", now.elapsed().as_millis());
+   
+    let now = time::Instant::now();
+    write_las(&dilated, raw_header, output);
+    println!("Writing time: {:?} millisecs.", now.elapsed().as_millis());
+    write_csv(&dilated, &format!("{}csv",&output[0..output.len()-3]));
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let input = &args[1];
+    let output = &args[2];
+
+    let md_input = metadata(input).unwrap();
+
+    if md_input.is_dir() {
+        let paths = read_dir(input).unwrap();
+        if !(Path::new(output).exists()) {
+            create_dir(output).unwrap();
+        
+        } else {
+            for path in paths {
+                let path = path.unwrap().path();
+                let extension = path
+                        .extension()
+                        .and_then(OsStr::to_str);
+                if extension == Some("las") || extension == Some("laz") {
+                    let filename = path.file_name().unwrap().to_str().unwrap();
+                    let input_path = format!("{}/{}", input, filename);
+                    let output_filename = format!("{}/{}_filtered.{}", output, &filename[0..filename.len()-4], extension.unwrap());
+                    execute_algorithms(&input_path, &output_filename);
+                }
+            }
+        }
+    } else {
+        if !(Path::new(output).exists()) {
+            create_dir(output).unwrap();
+        }
+
+        let filename = Path::new(&input).file_name().unwrap().to_str().unwrap();
+        let extension = Path::new(&input)
+                        .extension()
+                        .and_then(OsStr::to_str);
+        let output_filename = format!("{}/{}_filtered.{}", output, &filename[0..filename.len()-4], extension.unwrap());
+        execute_algorithms(input, &output_filename);
+    }
 }
 
 /*  POR HACER */
-// Filtrar vegetación aislada antes de reconstruir
 //1. Medir tiempos
 //2. Necesario hacer concurrentes las funciones de limpieza de ruido y filtrado
 //3. Como detecto ahora las rectas? (RANSAC?)
