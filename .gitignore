@@ -1,4 +1,8 @@
 *.las
 *.laz
+.csv
 WBT/
 lidar-processing/target
+myransac/data
+myransac/imgs
+myransac/pruebas

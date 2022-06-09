@@ -1,0 +1,17 @@
+{
+  "pipeline":[
+    {
+      "type":"readers.las",
+      "filename":"input.las"
+    },
+    {
+      "type":"writers.text",
+      "format":"csv",
+      "order":"X,Y,Z",
+      "keep_unspecified":"false",
+      "quote_header": "false",
+      "delimiter": ",",
+      "filename":"output.csv"
+    }
+    ]
+}
