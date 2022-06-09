@@ -365,4 +365,5 @@ ax.scatter(mydata[:,0], mydata[:,1], mydata[:,2], color='black', marker='+', lab
 
 ax.legend()
 ax.grid(True)
+plt.title("Parabole")
 plt.show()
