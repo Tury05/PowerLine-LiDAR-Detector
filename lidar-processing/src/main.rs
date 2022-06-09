@@ -2,9 +2,10 @@ use las::reader::PointIterator;
 use las::{Read, Reader, Writer, Write, point::Classification, raw};
 use std::{fs::File, fs::metadata, fs::create_dir, fs::read_dir, env, time, path::Path, ffi::OsStr};
 use std::thread;
+use std::sync::Arc;
 use std::borrow::Borrow;
 
-/*fn thread_grid(las_reader: &mut las::Reader, pos_x: usize, pos_y: usize, min_x: &f64, min_y: &f64, cell_size: &f64) -> (Vec<las::Point>, usize, usize) {
+/*fn thread_grid(las_reader: &mut Arc<PointIterator<>>, pos_x: usize, pos_y: usize, min_x: &f64, min_y: &f64, cell_size: &f64) -> (Vec<las::Point>, usize, usize) {
     let mut cell = Vec::new();
     
     for wrapped_point in (&mut las_reader).points() {
@@ -21,6 +22,7 @@ use std::borrow::Borrow;
 // Divide the point cloud into grid of size MxM cells
 fn multi_grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Vec<las::Point>>>{
     let mut threads = vec![];
+    let points = Arc::new(las_file.points());
 
     let min_x = las_file.header().bounds().min.x;
     let min_y = las_file.header().bounds().min.y;
@@ -39,9 +41,19 @@ fn multi_grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Ve
 
     for i in 0..grid_size {
         for j in 0..grid_size {
-            let mut file = las_file;
-            threads.push(thread::spawn(move || /*-> (Vec<las::Point>, usize, usize)*/ {
-                thread_grid(&mut file, i, j, &min_x, &min_y, &cell_size)
+            let points = &las_file.points();
+            threads.push(thread::spawn(move || {
+                let mut cell = Vec::new();
+    
+                for wrapped_point in *points {
+                    let point = wrapped_point.unwrap();
+                    if point.x >= (cell_size*i as f64) + min_x && point.x < (cell_size*(i+1) as f64) + min_x{
+                        if point.y >= (cell_size*j as f64) + min_y && point.y < (cell_size*(j+1) as f64) + min_y {
+                            cell.push(point.clone());
+                        }
+                    }       
+                }
+                (cell, i, j)
             }));
         }
     }
@@ -130,6 +142,7 @@ fn grid_histograms(point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<(f64,
     histograms
 }
 
+//-----------------------------------------------------------------------------------
 //Euclidean distance between two points
 fn euclidean_distance(point1: &las::Point, point2: &las::Point) -> f64 {
     let x_diff = point1.x - point2.x;
@@ -197,7 +210,7 @@ fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_
     }
 }
 
-//--------------------------------------------------------------------------------------------
+//-------------------------------------------FILTER HEIGHT DENSITYS-------------------------------------------------
 
 fn filter_height_density(point_cell: &Vec<las::Point>, min_density: usize, empty:usize , non_empty:usize , end: usize) -> Vec<las::Point> {
     let mut cell = Vec::new();
@@ -255,7 +268,7 @@ fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, min_density: usize, emp
     filtered_point_cloud
 }
 
-//---------------------------------------------------------------------------------------------
+//-----------------------------------------------PADDING MATRIX----------------------------------------------
 fn empty_vector(num: usize) -> Vec<Vec<las::Point>> {
     let mut vec: Vec<Vec<las::Point>>   = Vec::new();
     for _ in 0..num {
@@ -297,115 +310,109 @@ fn create_padded_point_cloud(point_cloud: &Vec<Vec<Vec<las::Point>>>, padding: u
     padded_point_cloud
 }
 
-fn erode_4_8_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize) -> Vec<Vec<Vec<las::Point>>> {
-    let mut neighbourhood8: bool = false;
+//-----------------------------------------------EROSIONS----------------------------------------------
+fn erode_4(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
     let mut eroded = point_cloud.clone();
     let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, 1);
-
-    match neighbourhood {
-        4 => {
-            neighbourhood8 = false;
-        },
-        8 => {
-            neighbourhood8 = true;
-        }
-        _ => {
-            panic!("Invalid neighbourhood size");
-        }
-    }
     
     for i in 1..padded.len() - 1 {
         for j in 1..padded[i].len() - 1 {
             // At least 1 neighbour in the neighbourhood (top, bottom, right, left)
-            if  padded[i][j].len() > 0 && 
-                (i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2)) && //Border cells
-                ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
-                + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
-                ) >= 1  {
-                    eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            // At least 1 neighbour in the neighbourhood (upright, bottomleft, bottomright, upleft)
-            else if padded[i][j].len() > 0 && neighbourhood8  &&
-                (i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2)) && //Border cells
-                ( ((padded[i+1][j+1].len() > 0) as i32) + ((padded[i-1][j-1].len() > 0) as i32) 
-                + ((padded[i-1][j+1].len() > 0) as i32) + ((padded[i+1][j-1].len() > 0) as i32) 
-                ) >= 1  {
-                    eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            
-            // At least 2 neighbours in the neighbourhood (top, bottom, right, left)
-            else if padded[i][j].len() > 0 &&   
-                ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
-                + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
-                ) >= 2  { 
-                    eroded[i-1][j-1] = original[i-1][j-1].clone();
-            
-            }
-            // At least 2 neighbours in the neighbourhood (upright, bottomleft, bottomright, upleft)
-            else if padded[i][j].len() > 0 && neighbourhood8 && 
-                ( ((padded[i+1][j+1].len() > 0) as i32) + ((padded[i-1][j-1].len() > 0) as i32) 
-                + ((padded[i-1][j+1].len() > 0) as i32) + ((padded[i+1][j-1].len() > 0) as i32) 
-                ) >= 2  { 
-                    eroded[i-1][j-1] = original[i-1][j-1].clone();
-            
-            }
+            if  padded[i][j].len() > 0 {
+                let min_neighbours = 
+                    if i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2) { //Border cells
+                        1
+                    }
+                    else {
+                        2
+                    };
 
-            else {
-                eroded[i-1][j-1].clear();
-	        }
+                if ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
+                    + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
+                    ) >= min_neighbours  {
+                        eroded[i-1][j-1] = original[i-1][j-1].clone();
+                }
+
+                else {
+                    eroded[i-1][j-1].clear();
+                }
+            }
         }
     }
     eroded
 }
-fn erode_24_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize) -> Vec<Vec<Vec<las::Point>>> {
+    let padding = 
+        match neighbourhood {
+            8 => {
+                1
+            },
+            16 => {
+                2
+            }
+            24 => {
+                3
+            }
+            _ => {
+                panic!("Invalid neighbourhood size");
+            }
+        };
+
     let mut eroded = point_cloud.clone();
-    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, 3);
+    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, padding);
 
-    println!("{:?}, {:?}", padded.len(), padded[padded.len()-1].len());
-
-    for i in 3..padded.len() - 3 { //3..[32]
-        for j in 3..padded[i].len() - 3 { //3..[32]
+    for i in padding..padded.len() - padding {
+        for j in padding..padded[i].len() - padding {
             let mut has_neighbour = false;
             if padded[i][j].len() > 0 {
-                for k in j-3..j+4 { //29-35
-                    if ((padded[i-3][k].len() > 0) as i32 
-                        + (padded[i+3][k].len() > 0) as i32 
-                        ) >= 1 {
+                let min_neighbours = 
+                    if i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2) || neighbourhood != 8 { //Border cells
+                        1
+                    }
+                    else {
+                        2
+                    };
+                for k in j-padding..j+padding+1 {
+                    if ((padded[i-padding][k].len() > 0) as i32 
+                        + (padded[i+padding][k].len() > 0) as i32 
+                        ) >= min_neighbours {
                             has_neighbour = true;
                             break;
                     }
                 }
                 if !has_neighbour {
-                    for k in i-3..i+4 {
-                        if ((padded[k][j-3].len() > 0) as i32 
-                            + (padded[k][j+3].len() > 0) as i32 
+                    for k in i-padding..i+padding+1 {
+                        if ((padded[k][j-padding].len() > 0) as i32 
+                            + (padded[k][j+padding].len() > 0) as i32 
                             ) >= 1 {
                                 has_neighbour = true;
                                 break;
                         }
                     }
-                    if !has_neighbour {
-                        eroded[i-3][j-3].clear();
-                    }
                 }  
+                match has_neighbour {
+                    true => {
+                        eroded[i-padding][j-padding] = 
+                            original[i-padding][j-padding].clone();
+                    },
+                    false => {
+                        eroded[i-padding][j-padding].clear();
+                    }
+                }
             }
         }
     }
     eroded
 }
 
-// CVR: erode
-fn erode(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: i32) -> Vec<Vec<Vec<las::Point>>> {
+fn erode(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize) -> Vec<Vec<Vec<las::Point>>> {
 
     match neighbourhood {
         4 => {
-            return erode_4_8_neighborhood(filtered, original, 4);
+            return erode_4(filtered, original);
         },
-        8 => {
-            return erode_4_8_neighborhood(filtered, original, 8);
-        }, 
-        24 => {
-            return erode_24_neighborhood(filtered, original);
+        8 | 16 | 24 => {
+            return erode_neighborhood(filtered, original, neighbourhood);
         },
         _ => {
             panic!("Invalid neighbourhood size");
@@ -413,20 +420,48 @@ fn erode(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point
     }
 }
 
-fn dilate2(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+//-----------------------------------------------DILATION----------------------------------------------
+fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
     let mut dilated = filtered.clone();
     let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&dilated, 1);
     
     for i in 1..padded.len() - 1{
         for j in 1..padded[i].len() - 1 {
-            if  // At least 2 neighbours
-                ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
-                   + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
-                ) >= 2  {
-                dilated [i-1][j-1] = original[i-1][j-1].clone();
-            } else {
-                dilated [i-1][j-1].clear();
-	        }
+            let mut has_neighbour = false;
+            let min_neighbours = 
+                if i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2) { //Border cells
+                    1
+                }
+                else {
+                    2
+                };
+
+            for k in j-1..j+2 {
+                if ((padded[i-1][k].len() > 0) as i32 
+                    + (padded[i+1][k].len() > 0) as i32 
+                ) >= min_neighbours {
+                    has_neighbour = true;
+                    break;
+                }
+            }
+            
+            if !has_neighbour {
+                if ((padded[i][j-1].len() > 0) as i32 
+                    + (padded[i][j+1].len() > 0) as i32 
+                ) >= min_neighbours {
+                    has_neighbour = true;
+                    break;
+                }
+            }  
+
+            match has_neighbour {
+                true => {
+                    dilated[i-1][j-1] = original[i-1][j-1].clone();
+                },
+                false => {
+                    dilated[i-1][j-1].clear();
+                }
+            }
         }
     }
     dilated
@@ -503,19 +538,19 @@ fn execute_algorithms(input: &String, output: &String) {
    
     //Filtering
     let now = time::Instant::now();
-    let filtered = filter_cells(&gridded, 10, 2, 5, 20);
+    let filtered = filter_cells(&gridded, 6, 2, 5, 20);
     println!("Filtering time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Erosions
     let now = time::Instant::now();
-    let eroded4 = erode(&filtered, &gridded, 4);
-    let eroded8 = erode(&eroded4, &gridded, 8);
-    let eroded24 = erode(&eroded8, &gridded, 24);
+    //let eroded4 = erode(&filtered, &gridded, 4);
+    let eroded8 = erode(&filtered, &gridded, 8);
+    let eroded16 = erode(&eroded8, &gridded, 16);
     println!("Erosion time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Dilation
     let now = time::Instant::now();
-    let dilated = dilate2(&eroded24, &gridded);
+    let dilated = dilate(&eroded16, &gridded);
     println!("Dilation time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Writing las/laz and csv
@@ -570,8 +605,3 @@ fn main() {
     }
     println!("Total time for {:?} cells: {:?} secs.", num_cells, total_time.elapsed().as_secs());
 }
-
-/*  POR HACER */
-//1. Medir tiempos
-//2. Necesario hacer concurrentes las funciones de limpieza de ruido y filtrado
-//3. Como detecto ahora las rectas? (RANSAC?)
