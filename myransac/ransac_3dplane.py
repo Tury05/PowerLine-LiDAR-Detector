@@ -93,7 +93,7 @@ def ransac_polyfit(data, order=2, k=100, t=0.1, d=10, f=0.1, debug=0):
     popt_ = None
     c_ = 1.0
     # descartar planos "horizontales"
-    while abs(c_) > 0.3 :
+    while abs(c_) > 0.1 :
       random_indices = np.random.choice(data.shape[0], size=order, replace=False)  # select 4 points
       data_ = data[random_indices,:]
       #print ("index: ", random_indices, data_.shape)
@@ -227,7 +227,7 @@ error = 1
 
 # bucle RANSAC
 for j in range(curves) :
-  best_model, numinliers, besterr, inliers = ransac_polyfit (mydata, order=3, k=900, t=0.6, d=min_points, f=0.1, debug=2)
+  best_model, numinliers, besterr, inliers = ransac_polyfit (mydata, order=3, k=900, t=0.75, d=min_points, f=0.1, debug=2)
 
   # Condición de finalización del bucle
   if best_model is None :
