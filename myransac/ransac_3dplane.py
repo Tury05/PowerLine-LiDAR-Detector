@@ -127,9 +127,7 @@ def ransac_polyfit(data, order=2, k=100, t=0.1, d=10, f=0.1, debug=0):
 
           # for debug
           if debug > 0 :
-            print ("     k", kk, " inliers ", bestnuminliers, "error", thiserr, "params", popt_)  
-          if debug > 2 :
-            print ("    index: ", random_indices, data_.shape[0],  np.transpose(bestinliers) )
+            print ("     k %4d  inliers %5d error %.3f"%(kk, bestnuminliers, thiserr), "params", popt_)  
 
       """
           # calcular probabilidad de outliers
@@ -181,7 +179,6 @@ def leer_las (filename) :
 fig = plt.figure()
 ax = plt.axes(projection = '3d')
 ax.grid(True)
-plt.title("Planes")
 
 
 # leer datos de fichero y preprocesar
@@ -222,12 +219,12 @@ data = data_z  # replace the data
 mydata = data
 curves = 12
 min_points = 200
-error = 1
+th_error = 0.6
 
 
 # bucle RANSAC
 for j in range(curves) :
-  best_model, numinliers, besterr, inliers = ransac_polyfit (mydata, order=3, k=900, t=0.75, d=min_points, f=0.1, debug=2)
+  best_model, numinliers, besterr, inliers = ransac_polyfit (mydata, order=3, k=900, t=th_error, d=min_points, f=0.1, debug=2)
 
   # Condición de finalización del bucle
   if best_model is None :
@@ -235,9 +232,8 @@ for j in range(curves) :
      break
 
   # imprimir datos del modelo y dibujar los inliers detectados
-  print("RANSAC", j, " model: ", best_model)
-  print('RANSAC', j, ' num points: ', numinliers)
-  print("RANSAC", j, " error: ", besterr)
+  print("RANSAC %2d "%(j), " model: ", best_model)
+  print('RANSAC %2d  num points: %5d  error %.3f '%(j, numinliers, besterr))
 
   mylabel = '%d (%d points)'%(j, numinliers)
   a, b, c, d = best_model
@@ -257,5 +253,6 @@ ax.scatter(mydata[:,0], mydata[:,1], mydata[:,2], color='black', marker='+', lab
 
 
 # mostrar figura
+plt.title("Planes   (threshold dist: %4.1f)"%th_error)
 ax.legend()
 plt.show()
