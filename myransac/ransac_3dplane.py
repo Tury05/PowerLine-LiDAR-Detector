@@ -100,6 +100,8 @@ def ransac_polyfit(data, order=2, k=100, t=0.1, d=10, f=0.1, debug=0):
 
       popt_ = plane_fit(data_) # ajustar a un plano
       a_, b_, c_, d_ = popt_
+      if d_ > 0:
+         popt_ = - popt_
           
     if popt_ is not None :
       ## calcular la distancia al plano a probar de todos los puntos
@@ -186,8 +188,8 @@ ax.grid(True)
 #  data, x, y, z = leer_datos('./data/output.csv')
 #  data, x, y, z = leer_datos('./data/output1.csv')
 #  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_70500_68500_EPSG2169.laz')
-#  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_69500_69500_EPSG2169.laz')
-data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_72500_64500_EPSG2169.laz')
+data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_69500_69500_EPSG2169.laz')
+#  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_72500_64500_EPSG2169.laz')
 
 data_size = data.shape[0]
 #ax.scatter(x, y, z, color='yellow', marker='+')  # debug: pintar todos los puntos
@@ -196,7 +198,7 @@ data_size = data.shape[0]
 
 # puntos mayores que altura máxima del fichero -11 metros en output.csv
 max_z = np.max (data[:,2]) 
-delta_z = 12 * 2.5
+delta_z = 12 * 2
 pts_z = z > (max_z - delta_z)  # (z > 355) # (z <= 338)  #(z < 348.6)  &  (z > 338)
 data_z = data [pts_z,:]
 
