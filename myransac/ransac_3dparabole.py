@@ -53,8 +53,8 @@ def crear_datos (n=400, num_lines=9, space_lines=100, error=10, space=1000) :
 def func2(x, xp, yp, a, b): # funciona bien en casos reales, pero ajusta la catenaria "por zonas"
     return a * (x[0] - xp) **2 + b * (x[1] - yp) **2 
 
-def plane(x, a, b, c, d):   # no funciona
-    return a * x[0] + b*x[1] + c
+def func(x, a, b, c, d, e):   # no funciona !?
+    return a * x[0] **2 + b * x[1] **2 + c * x[0] + d * x[1] + e
 
 # modelos estudiados en "3D CATENARY CURVE FITTING FOR GEOMETRIC CALIBRATION"
 def catenary2(x, a, c, th, rho):
@@ -111,15 +111,18 @@ def ransac_polyfit(data, order=2, k=100, t=0.1, d=10, f=0.1, debug=0):
 
     popt_ = None
     try:
-      popt_, _ = curve_fit(func2, data_[:,:2].T, ydata=data_[:,2])   # ajustar a una parábola 3D
+      popt_, _ = curve_fit(func, data_[:,:2].T, ydata=data_[:,2])   # ajustar a una parábola 3D
     except RuntimeError:
       #print("    Error in initial fit, try again")
       pass
           
     if popt_ is not None :
       ## quadratic function
-      xp_, yp_, a_, b_ = popt_
-      z_ = a_ * (x - xp_) ** 2 + b_ * (y - yp_) ** 2    # calcular la z "teórica"
+      #xp_, yp_, a_, b_ = popt_
+      #z_ = a_ * (x - xp_) ** 2 + b_ * (y - yp_) ** 2    # calcular la z "teórica"
+      a_, b_, c_, d_, e_ = popt_
+      z_ = a_ * x ** 2 + b_ * y  ** 2 + c_ * x + d_ * y + e_    # calcular la z "teórica"
+
       ## catenary function
       ##a_, c_, th_, rho_ = popt_
       ##tmp_ = math.cos(th_) * x - math.sin(th_) * y - rho_ * math.sin(th_)
@@ -222,8 +225,8 @@ else :
   #  data, x, y, z = leer_datos('./data/output.csv')
   #  data, x, y, z = leer_datos('./data/output1.csv')
   #  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_70500_68500_EPSG2169.laz')
-  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_69500_69500_EPSG2169.laz')
-  #  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_72500_64500_EPSG2169.laz')
+  #  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_69500_69500_EPSG2169.laz')
+  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_72500_64500_EPSG2169.laz')
   #ax.scatter(x, y, z, color='yellow', marker='+')  # debug: pintar todos los puntos
   #plt.show() # debug: mostrar todos los puntos
   
@@ -245,18 +248,24 @@ dif_x = np.min (data[:,0])
 dif_y = np.min (data[:,1])
 data[:,0] = data[:,0] - dif_x
 data[:,1] = data[:,1] - dif_y
+'''
 popt_ = None
 try:
-   popt_, _ = curve_fit(func2, data[:,:2].T, ydata=data[:,2])   # ajustar a la función
+   popt_, _ = curve_fit(func, data[:,:2].T, ydata=data[:,2])   # ajustar a la función
 except RuntimeError:
    print("    Error in initial fit")
    pass
           
 if popt_ is not None :
    ## quadratic function
-   xp_, yp_, a_, b_ = popt_
-   z_ = a_ * (x - xp_) ** 2 + b_ * (y - yp_) ** 2    # calcular la z "teórica"
-   print(a_, b_, xp_, yp_, z_, "error", np.sum(np.abs(z - z_)) / z_.shape[0])
+   #xp_, yp_, a_, b_ = popt_
+   # z_ = a_ * (x - xp_) **2 + b_ * (y - yp_) **2    # calcular la z "teórica" (func2)
+   #print(a_, b_, xp_, yp_, z_, "error", np.sum(np.abs(z - z_)) / z_.shape[0])
+
+   a_, b_, c_, d_, e_ = popt_
+   z_ = a_ * data[:,0] **2 + b_ * data[:,1] **2 + c_ * data[:,0] + d_ * data[:,1] + e_    # calcular la z "teórica"  (func)
+   print(a_, b_, c_, d_, e_, z_, "error", np.sum(np.abs(z - z_)) / z_.shape[0])
+
    ## catenary function
    ##a_, c_, th_, rho_ = popt_
    ##tmp_ = math.cos(th_) * data[:,0] - math.sin(th_) * data[:,1] - rho_ * math.sin(th_) 
@@ -270,16 +279,21 @@ if popt_ is not None :
 # representación 2D: salen líneas rectas !!!
 #plt.plot(x, y, "o", markersize=5 )
 #plt.show()
-
+'''
 
 
 # fit curve (no funciona con varias curvas !!!)
 if synthetic == True :
   myrange = np.arange(n, 2*n)
-  popt, _ = curve_fit(func2, data[myrange,:2].T, ydata=data[myrange,2])
-  xp, yp, a, b = popt
-  print('FIT eq: z = %.5f * (x - %.5f) ^ 2 + %.5f * (y - %5.f) ^ 2 ' %(a, xp, b, yp))
-  z1b = a * (x - xp) ** 2 + b * (y - yp) ** 2
+  #popt, _ = curve_fit(func2, data[myrange,:2].T, ydata=data[myrange,2])
+  #xp, yp, a, b = popt
+  #print('FIT eq: z = %.5f * (x - %.5f) ^ 2 + %.5f * (y - %5.f) ^ 2 ' %(a, xp, b, yp))
+  #z1b = a * (x - xp) ** 2 + b * (y - yp) ** 2
+
+  popt, _ = curve_fit(func, data[myrange,:2].T, ydata=data[myrange,2])
+  a, b, c, d, e = popt
+  print('FIT eq: z = %.5f * x ^ 2 + %.5f * y ^2 + %.5f * x + %.5f * y + %.5f  ' %(a, b, c, d, e))
+  z1b = a * x ** 2 + b * y ** 2 + c * x + d * y + e
 
   '''
   popt, _ = curve_fit(plane, data[myrange,:2].T, ydata=data[myrange,2])
@@ -288,13 +302,13 @@ if synthetic == True :
   z1b = a * x  + b * y + c
   '''
 
-  fit_error = np.sum( np.abs (z1b[myrange] - data[myrange, 2]) )
+  fit_error = np.sum( np.abs (z1b[myrange] - data[myrange, 2]) ) / z1b[myrange].shape[0] 
   print ('FIT num points: ', myrange.shape)
   print ('FIT points: ', myrange)
   print ('FIT error: ', fit_error)
   ax.scatter(x[myrange], y[myrange], z1b[myrange], color='red')
 
-  plt.show()
+  #plt.show()
 
 
 """
@@ -323,7 +337,7 @@ min_points = 200
 colors = cm.rainbow(np.linspace(0, 1, curves))
 
 for j,c in zip(range(curves), colors) :
-  best_model, numinliers, besterr, inliers = ransac_polyfit (mydata, order=4, k=900, t=1.2, d=min_points, f=0.1, debug=2)
+  best_model, numinliers, besterr, inliers = ransac_polyfit (mydata, order=5, k=900, t=1.2, d=min_points, f=0.1, debug=2)
 
   if best_model is None :
      print (" No more curves detected than ", j, "RANSAC curves")
@@ -337,16 +351,22 @@ for j,c in zip(range(curves), colors) :
   my_x = mydata[:,0]
   my_y = mydata[:,1]
   my_z = mydata[:,2]
-  xp, yp, a, b = best_model ##  ==> parabole !!!
-  #z1 = 1 * x1 ** 2 + b * y1 ** 2 + c * x1 + d * y1 + e
-  ###ax.plot(x1, y1, z1, color='black')  # RANSAC curve  ==> bad x !! (x change with each line!!)
-  z1n =  a * (my_x - xp) ** 2 + b * (my_y - yp) ** 2  ##  ==> parabole !!!
+
   mylabel = '%d (%d points)'%(j, numinliers)
-  mylabel += '  params  [%5.1f %5.1f %.5g %.5g]'%(xp, yp, a, b)
+  #xp, yp, a, b = best_model ##  ==> parabole !!!
+  #z1n =  a * (my_x - xp) ** 2 + b * (my_y - yp) ** 2  ##  ==> parabole !!!
+  #mylabel += '  params  [%5.1f %5.1f %.5g %.5g]'%(xp, yp, a, b)
+
+  a, b, c, d, e = best_model
+  #z1n = a * x1 ** 2 + b * y1 ** 2 + c * x1 + d * y1 + e
+  ###ax.plot(x1, y1, z1, color='black')  # RANSAC curve  ==> bad x !! (x change with each line!!)
+  mylabel += '  params  [%.5f %.5f %.5g %.5g %.5f]'%(a, b, c, d, e)
+
+
   #ax.scatter(my_x[inliers], my_y[inliers], z1n[inliers],  marker='o', label=mylabel)  # RANSAC curve
   ax.scatter(my_x[inliers], my_y[inliers], my_z[inliers],  marker='o', label=mylabel)  # RANSAC curve
 
-  a, c, th, rho = best_model
+  #a, c, th, rho = best_model
   #tmp_ = math.cos(th) * my_x[inliers] - math.sin(th) * my_y[inliers] - rho * math.sin(th) 
   #z_ = a + np.cosh((tmp_ / c) - 1)
   #mylabel = '%d (%d points)'%(j, numinliers)
