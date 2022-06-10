@@ -188,6 +188,8 @@ ax.grid(True)
 #  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_70500_68500_EPSG2169.laz')
 #  data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_69500_69500_EPSG2169.laz')
 data, x, y, z = leer_las('./data/pl_no_ground_LIDAR2019_NdP_72500_64500_EPSG2169.laz')
+
+data_size = data.shape[0]
 #ax.scatter(x, y, z, color='yellow', marker='+')  # debug: pintar todos los puntos
 #plt.show() # debug: mostrar todos los puntos
   
@@ -203,7 +205,7 @@ print ("  puntos > ", max_z, "(max_z) - ", delta_z, " = ", data_z.shape, "\n")
 #plt.show()  # debug: show selected points
 
 data = data_z  # replace the data
-
+data_size = data.shape[0]
 
 # DEBUG: translate to the origin (smaller number) !?  # only usefull for catenary fitting
 #data[:,0] = data[:,0] - np.min (data[:,0])
@@ -219,7 +221,7 @@ data = data_z  # replace the data
 mydata = data
 curves = 12
 min_points = 200
-th_error = 0.6
+th_error = 1.2
 
 
 # bucle RANSAC
@@ -248,11 +250,11 @@ for j in range(curves) :
     break
 
 # mostrar resto de puntos (no ajustado a ninguna curva)
-mylabel = 'noise (%d points)'%(mydata.shape[0])
+mylabel = 'noise (%d points from %5d)'%(mydata.shape[0], data_size)
 ax.scatter(mydata[:,0], mydata[:,1], mydata[:,2], color='black', marker='+', label=mylabel) # noise or no RANSAC
 
 
 # mostrar figura
-plt.title("Planes   (threshold dist: %4.1f)"%th_error)
+plt.title("Planes   (distance threshold: %4.1f)"%th_error)
 ax.legend()
 plt.show()
