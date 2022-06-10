@@ -51,13 +51,17 @@ def plane_fit(ptos) :
 
   # the cross product is a vector normal to the plane
   cp = np.cross(v1, v2)
-  cp /= np.linalg.norm(cp)
+  cp /= np.linalg.norm(cp)  # normalizar vector director
   a, b, c = cp
 
   # This evaluates a * x3 + b * y3 + c * z3 which equals d
   d = - np.dot(cp, p3)
+  if d > 0:   # fijar la misma orientación de todos los planos
+       a = -a; b = -b; c = -c; d = -d
 
   ### print('The equation is {0}x + {1}y + {2}z - {3} = 0'.format(a, b, c, d))
+
+         
   return a, b, c, d
 
 
@@ -100,8 +104,7 @@ def ransac_polyfit(data, order=2, k=100, t=0.1, d=10, f=0.1, debug=0):
 
       popt_ = plane_fit(data_) # ajustar a un plano
       a_, b_, c_, d_ = popt_
-      if d_ > 0:
-         popt_ = - popt_
+
           
     if popt_ is not None :
       ## calcular la distancia al plano a probar de todos los puntos
@@ -111,7 +114,7 @@ def ransac_polyfit(data, order=2, k=100, t=0.1, d=10, f=0.1, debug=0):
       data_ = data[alsoinliers,:]  # TODO: falta incluir "random_indices" !?
       sum_inliers = sum(alsoinliers)
 
-      #noinliers = np.abs(z - z_) < 2 * t # puntos "molestos" cerca de la curva
+      #noinliers = np.abs(dist) < 2 * t # puntos "molestos" cerca de la curva
       #sum_inliers = 2*sum(alsoinliers) - sum(noinliers)
       
       if sum_inliers > d :   # si sobrepasan el número mínimo de puntos
@@ -198,7 +201,7 @@ data_size = data.shape[0]
 
 # puntos mayores que altura máxima del fichero -11 metros en output.csv
 max_z = np.max (data[:,2]) 
-delta_z = 12 * 2
+delta_z = 12 * 2.5
 pts_z = z > (max_z - delta_z)  # (z > 355) # (z <= 338)  #(z < 348.6)  &  (z > 338)
 data_z = data [pts_z,:]
 
