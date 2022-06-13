@@ -1,14 +1,12 @@
-use las::reader::PointIterator;
 use las::{Read, Reader, Writer, Write, point::Classification, raw};
 use std::{fs::File, fs::metadata, fs::create_dir, fs::read_dir, env, time, path::Path, ffi::OsStr};
-use std::thread;
-use std::sync::Arc;
-use std::borrow::Borrow;
+//use std::thread;
 
-/*fn thread_grid(las_reader: &mut Arc<PointIterator<>>, pos_x: usize, pos_y: usize, min_x: &f64, min_y: &f64, cell_size: &f64) -> (Vec<las::Point>, usize, usize) {
+/*fn multi_grid(file_path: &String, pos_x: usize, pos_y: usize, min_x: &f64, min_y: &f64, cell_size: &f64) -> (Vec<las::Point>, usize, usize) {
     let mut cell = Vec::new();
+    let mut reader = Reader::from_path(file_path).unwrap();
     
-    for wrapped_point in (&mut las_reader).points() {
+    for wrapped_point in reader.points() {
         let point = wrapped_point.unwrap();
         if point.x >= (cell_size*pos_x as f64) + min_x && point.x < (cell_size*(pos_x+1) as f64) + min_x{
             if point.y >= (cell_size*pos_y as f64) + min_y && point.y < (cell_size*(pos_y+1) as f64) + min_y {
@@ -20,13 +18,13 @@ use std::borrow::Borrow;
 }
 
 // Divide the point cloud into grid of size MxM cells
-fn multi_grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Vec<las::Point>>>{
+fn multi_grid_division(file_path: &String, cell_size: f64) -> Vec<Vec<Vec<las::Point>>>{
     let mut threads = vec![];
-    let points = Arc::new(las_file.points());
+    let reader = Reader::from_path(file_path).unwrap();
 
-    let min_x = las_file.header().bounds().min.x;
-    let min_y = las_file.header().bounds().min.y;
-    let max_x = las_file.header().bounds().max.x;
+    let min_x = reader.header().bounds().min.x;
+    let min_y = reader.header().bounds().min.y;
+    let max_x = reader.header().bounds().max.x;
     let divisions_x = cell_size;
 
     let grid_size = ((max_x - min_x)/divisions_x).ceil() as usize;
@@ -41,20 +39,10 @@ fn multi_grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Ve
 
     for i in 0..grid_size {
         for j in 0..grid_size {
-            let points = &las_file.points();
-            threads.push(thread::spawn(move || {
-                let mut cell = Vec::new();
-    
-                for wrapped_point in *points {
-                    let point = wrapped_point.unwrap();
-                    if point.x >= (cell_size*i as f64) + min_x && point.x < (cell_size*(i+1) as f64) + min_x{
-                        if point.y >= (cell_size*j as f64) + min_y && point.y < (cell_size*(j+1) as f64) + min_y {
-                            cell.push(point.clone());
-                        }
-                    }       
-                }
-                (cell, i, j)
-            }));
+            let file_path = file_path.clone();
+            threads.push(thread::spawn(move || 
+                multi_grid(&file_path, i, j, &min_x, &min_y, &cell_size)
+            ));
         }
     }
     for thread in threads {
@@ -98,116 +86,6 @@ fn grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Vec<las:
         }
     }
     grids
-}
-//---------------------------------------Histograms-------------------------------------------
-
-//Function to get histogram of points hegihts in each cell
-fn get_histogram(points: &Vec<las::Point>) -> Vec<(f64, usize)>{
-    let min_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::min);
-    let max_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::max);
-    
-    let diff = max_z - min_z;
-    let mut histogram = Vec::new();
-
-    for i in (0..diff.ceil() as usize).step_by(2) {
-        histogram.push((min_z + i as f64, 0));
-    }
-    
-    for point in points {
-        for i in 0..histogram.len() {
-            if point.z > histogram[i].0  && point.z <= histogram[i].0 + 2. {
-                histogram[i].1 += 1;
-                break;
-            }
-        }
-    }
-    
-    histogram
-}
-
-//Gets the histogram of all cells
-fn grid_histograms(point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<(f64, usize)>>> {
-    let mut histograms = Vec::new();
-    for i in 0..point_cloud.len(){
-        histograms.push(Vec::new());
-        for _ in 0..point_cloud[i].len() {
-            histograms[i].push(Vec::new());
-        }
-    }
-    for i in 0..point_cloud.len(){
-        for j in 0..point_cloud[i].len(){
-            histograms[i][j] = get_histogram(&point_cloud[i][j]);
-        }
-    }
-    histograms
-}
-
-//-----------------------------------------------------------------------------------
-//Euclidean distance between two points
-fn euclidean_distance(point1: &las::Point, point2: &las::Point) -> f64 {
-    let x_diff = point1.x - point2.x;
-    let y_diff = point1.y - point2.y;
-    let z_diff = point1.z - point2.z;
-    (x_diff*x_diff + y_diff*y_diff + z_diff*z_diff).sqrt()
-}
-
-fn mean_zvalue(points: &Vec<las::Point>) -> f64 {
-    let mut sum = 0.0;
-    for point in points {
-        sum += point.z;
-    }
-    sum / points.len() as f64
-}
-
-//Check if point is noise
-fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usize, diff_threshold: f64) -> bool {
-    let mut count = 0;
-    let mut noise = true;
-    let mean_z = mean_zvalue(&cell);
-    for i in 0..cell.len() {
-        if &cell[i] != point && (euclidean_distance(point, &cell[i]) < epsilon) {
-            count += 1;
-            if count >= limit && (point.z - mean_z).abs() < diff_threshold {
-                noise = false;
-                break;
-            }
-        }
-    }
-    noise
-}
-
-fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, down_epsilon:f64, down_limit: usize, diff_threshold: f64) {
-    for i in 0..point_cloud.len() {
-        for j in 0..point_cloud[i].len() {
-            loop {
-                if point_cloud[i][j].len() != 0 {
-                    let max_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
-                    let highest_point = point_cloud[i][j].iter().find(|p| p.z == max_z).unwrap();
-                    if is_noise(&highest_point, &point_cloud[i][j], up_epsilon, up_limit, diff_threshold) {
-                        let index = point_cloud[i][j].iter().position(|p| p == highest_point).unwrap();
-                        point_cloud[i][j].remove(index);
-                    }
-                    else {
-                        break;
-                    }
-                }
-                
-            }
-            loop {
-                if point_cloud[i][j].len() != 0 {
-                    let min_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
-                    let lowest_point = point_cloud[i][j].iter().find(|p| p.z == min_z).unwrap();
-                    if is_noise(&lowest_point, &point_cloud[i][j], down_epsilon, down_limit, diff_threshold) {
-                        let index = point_cloud[i][j].iter().position(|p| p == lowest_point).unwrap();
-                        point_cloud[i][j].remove(index);
-                    }
-                    else {
-                        break;
-                    }
-                }
-            }
-        }
-    }
 }
 
 //-------------------------------------------FILTER HEIGHT DENSITYS-------------------------------------------------
@@ -450,7 +328,6 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
                     + (padded[i][j+1].len() > 0) as i32 
                 ) >= min_neighbours {
                     has_neighbour = true;
-                    break;
                 }
             }  
 
@@ -468,19 +345,6 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
 }
 //-----------------------------------------------------------------------------------------
 //---------------------------------------WRITING-------------------------------------------
-//Writes into file a single cell
-fn write_cell_las(point_cell: &Vec<las::Point>, raw_header: raw::Header, output: &String) {   
-    let mut writer = Writer::from_path(output, las::Header::from_raw(raw_header).unwrap()).unwrap();
-
-    for point in point_cell{
-        let mut point = point.clone();
-        if point.return_number > 5 {
-            point.return_number = 5;
-        }
-        writer.write(point.clone()).unwrap();
-    }
-    writer.close().unwrap();
-}
 
 //Writes into file all point cloud
 fn write_las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, output: &String) {
@@ -494,7 +358,9 @@ fn write_las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Header, o
                     if point.return_number > 5 {
                         point.return_number = 5;
                     }
-                    writer.write(point.clone()).unwrap();
+                    if point.classification != Classification::Ground {
+                        writer.write(point.clone()).unwrap();
+                    }
                 }
             }
         }
@@ -533,29 +399,30 @@ fn execute_algorithms(input: &String, output: &String) {
    
     //Grid Division
     let now = time::Instant::now();
-    let gridded = grid_division(&mut reader, 16.7);
+    let gridded = grid_division(&mut reader, 12.);
     println!("Grid division time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Filtering
     let now = time::Instant::now();
-    let filtered = filter_cells(&gridded, 6, 2, 5, 20);
+    let filtered = filter_cells(&gridded, 6, 2, 7, 20);
     println!("Filtering time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Erosions
     let now = time::Instant::now();
-    //let eroded4 = erode(&filtered, &gridded, 4);
-    let eroded8 = erode(&filtered, &gridded, 8);
+    let eroded4 = erode(&filtered, &gridded, 4);
+    let eroded8 = erode(&eroded4, &gridded, 8);
     let eroded16 = erode(&eroded8, &gridded, 16);
+    let eroded24 = erode(&eroded16, &gridded, 24);
     println!("Erosion time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Dilation
     let now = time::Instant::now();
-    let dilated = dilate(&eroded16, &gridded);
+    let dilated = dilate(&eroded24, &gridded);
     println!("Dilation time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Writing las/laz and csv
     let now = time::Instant::now();
-    write_las(&dilated, raw_header, output);
+    write_las(&eroded16, raw_header, output);
     println!("Writing time: {:?} millisecs.", now.elapsed().as_millis());
     write_csv(&dilated, &format!("{}csv",&output[0..output.len()-3]));
 
