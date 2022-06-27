@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 las = {version = "0.7.6", features = ["laz"]}
+rand = "0.8.5"
 csv = "1.1.6"
