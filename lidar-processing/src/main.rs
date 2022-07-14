@@ -1,56 +1,6 @@
 use las::{Read, Reader, Writer, Write, point::Classification, raw, Header};
 use std::{fs::File, fs::metadata, fs::create_dir, fs::read_dir, env, time, path::Path, ffi::OsStr};
-use rand::{Rng, prelude::*};
-use std::thread;
-
-/*fn multi_grid(points_vec: &Vec<las::Point>, pos_x: usize, pos_y: usize, min_x: &f64, min_y: &f64, cell_size: &f64) -> (Vec<las::Point>, usize, usize) {
-    let mut cell = Vec::new();
-    
-    for point in points_vec {
-        if point.x >= (cell_size*pos_x as f64) + min_x && point.x < (cell_size*(pos_x+1) as f64) + min_x{
-            if point.y >= (cell_size*pos_y as f64) + min_y && point.y < (cell_size*(pos_y+1) as f64) + min_y {
-                cell.push(point.clone());
-            }
-        }       
-    }
-    (cell, pos_x, pos_y)
-}
-
-//Divide the point cloud into grid of size MxM cells
-fn multi_grid_division(las_file: &mut las::Reader, cell_size: f64) -> Vec<Vec<Vec<las::Point>>>{
-    let mut threads = vec![];
-
-    let min_x = las_file.header().bounds().min.x;
-    let min_y = las_file.header().bounds().min.y;
-    let max_x = las_file.header().bounds().max.x;
-    let divisions_x = cell_size;
-
-    let grid_size = ((max_x - min_x)/divisions_x).ceil() as usize;
-
-    let mut grids:Vec<Vec<Vec<las::Point>>> = Vec::new();
-    for i in 0..grid_size{
-        grids.push(Vec::new());
-        for _ in 0..grid_size{
-            grids[i].push(Vec::new());
-        }
-    }
-
-    let points = las_file.points().map(|r| r.unwrap()).collect::<Vec<_>>();
-
-    for i in 0..grid_size {
-        for j in 0..grid_size {
-            let points_vec = points.clone();
-            threads.push(thread::spawn(move || 
-                multi_grid(&points_vec, i, j, &min_x, &min_y, &cell_size)
-            ));
-        }
-    }
-    for thread in threads {
-        let (cell, pos_x, pos_y) = thread.join().unwrap();
-        grids[pos_x][pos_y] = cell;
-    }
-    grids
-}*/
+use rand::{thread_rng, seq::SliceRandom};
 
 fn reduce_ground(point_cloud: &mut las::Reader, ground_percentage: f64) -> Vec<las::Point> {
     let mut points_vector = Vec::new();
@@ -103,9 +53,9 @@ fn grid_division(file_header: &Header, point_cloud: Vec<las::Point>,cell_size: f
     }
     grids
 }
+//-------------------------------------------NOISE REMOVAL-------------------------------------------------
 
-//-----------------------------------------------------------------------------------
-/*//Euclidean distance between two points
+//Euclidean distance between two points
 fn euclidean_distance(point1: &las::Point, point2: &las::Point) -> f64 {
     let x_diff = point1.x - point2.x;
     let y_diff = point1.y - point2.y;
@@ -138,16 +88,17 @@ fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usi
     noise
 }
 
-fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, diff_threshold: f64) {
-    for i in 0..point_cloud.len() {
-        for j in 0..point_cloud[i].len() {
+fn clean_noise(point_cloud: &Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, diff_threshold: f64) -> Vec<Vec<Vec<las::Point>>> {
+    let mut cleaned = point_cloud.clone();
+    for i in 0..cleaned.len() {
+        for j in 0..cleaned[i].len() {
             loop {
-                if point_cloud[i][j].len() != 0 {
-                    let max_z = point_cloud[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
-                    let highest_point = point_cloud[i][j].iter().find(|p| p.z == max_z).unwrap();
-                    if is_noise(&highest_point, &point_cloud[i][j], up_epsilon, up_limit, diff_threshold) {
-                        let index = point_cloud[i][j].iter().position(|p| p == highest_point).unwrap();
-                        point_cloud[i][j].remove(index);
+                if cleaned[i][j].len() != 0 {
+                    let max_z = cleaned[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
+                    let highest_point = cleaned[i][j].iter().find(|p| p.z == max_z).unwrap();
+                    if is_noise(&highest_point, &cleaned[i][j], up_epsilon, up_limit, diff_threshold) {
+                        let index = cleaned[i][j].iter().position(|p| p == highest_point).unwrap();
+                        cleaned[i][j].remove(index);
                     }
                     else {
                         break;
@@ -159,41 +110,11 @@ fn clean_noise(point_cloud: &mut Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_
             }
         }
     }
-}*/
-
+    cleaned
+}
 //-------------------------------------------FILTER HEIGHT DENSITYS-------------------------------------------------
 
-fn mean_zvalue(points: &Vec<las::Point>) -> f64 {
-    let mut sum = 0.0;
-    for point in points {
-        sum += point.z;
-    }
-    sum / points.len() as f64
-}
-
-fn filter_covariance(point_cloud: &Vec<Vec<Vec<las::Point>>>, epsilon: f64) -> Vec<Vec<Vec<las::Point>>> {
-    let mut filtered_point_cloud = point_cloud.clone();
-    for i in 0..point_cloud.len() {
-        for j in 0..point_cloud[i].len() {
-            if point_cloud[i][j].len() != 0 {
-                let mean_z = mean_zvalue(&point_cloud[i][j]);
-                let mut count = 0;
-                let mut sum = 0.0;
-                for point in &point_cloud[i][j] {
-                        sum += (point.z - mean_z).powi(2);
-                        count += 1;
-                }
-                let covariance = (sum / count as f64).sqrt();
-                if covariance > epsilon {
-                    filtered_point_cloud[i][j].clear();
-                }
-            }
-        }
-    }
-    filtered_point_cloud
-}
-
-fn filter_height_density(point_cell: &Vec<las::Point>, min_density: usize, empty:usize , non_empty_cont:usize, non_empty: usize , min_iter: usize, end: usize) -> Vec<las::Point> {
+fn filter_height_density(point_cell: &Vec<las::Point>, min_density: usize, empty:usize , non_empty_cont:usize, non_empty: usize, end: usize) -> Vec<las::Point> {
     let mut cell = Vec::new();
     let mut candidate = false;
     let mut count_non_empty = 0;
@@ -241,12 +162,12 @@ fn filter_height_density(point_cell: &Vec<las::Point>, min_density: usize, empty
 }
 
 //Filter all cells
-fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, min_density: usize, empty:usize , non_empty_cont: usize, non_empty:usize, min_iter: usize, end: usize) -> Vec<Vec<Vec<las::Point>>> {   
+fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, min_density: usize, empty:usize , non_empty_cont: usize, non_empty:usize, end: usize) -> Vec<Vec<Vec<las::Point>>> {   
     let mut filtered_point_cloud = Vec::new();
     for i in 0..point_cloud.len(){
         filtered_point_cloud.push(Vec::new());
         for j in 0..point_cloud[i].len(){
-            filtered_point_cloud[i].push(filter_height_density(&point_cloud[i][j], min_density, empty, non_empty_cont, non_empty, min_iter, end));
+            filtered_point_cloud[i].push(filter_height_density(&point_cloud[i][j], min_density, empty, non_empty_cont, non_empty, end));
         }
     }
     filtered_point_cloud
@@ -326,167 +247,6 @@ fn erode_4(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::
     eroded
 }
 
-fn continuity(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, erode: bool) -> Vec<Vec<Vec<las::Point>>> {
-    let padding = 1;
-    let mut eroded = point_cloud.clone();
-    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, padding);
-
-    for i in 1..padded.len() - 1 {
-        for j in 1..padded[i].len() - 1 {
-            // At least 1 neighbour in the neighbourhood (top, bottom, right, left)
-            
-            let min_neighbours = 
-                if i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2) { //Border cells
-                    1
-                }
-                else {
-                    2
-                };
-                
-            if padded[i+1][j].len() > 0 && (((padded[i-1][j].len() > 0) as i32) 
-                + ((padded[i-1][j+1].len() > 0) as i32) + ((padded[i-1][j-1].len() > 0) as i32) 
-                 >= min_neighbours ) {
-                    eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            else if padded[i-1][j].len() > 0 && (((padded[i+1][j].len() > 0) as i32) 
-                + ((padded[i+1][j+1].len() > 0) as i32) + ((padded[i+1][j-1].len() > 0) as i32) 
-                 >= min_neighbours ) {
-                    eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            else if (padded[i-1][j-1].len() > 0) && ((padded[i+1][j].len() > 0) as i32 
-                    + (padded[i+1][j+1].len() > 0) as i32 
-                    + (padded[i][j+1].len() > 0) as i32 
-                    >= min_neighbours){
-                eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            else if (padded[i-1][j+1].len() > 0) && ((padded[i+1][j].len() > 0) as i32 
-                    + (padded[i+1][j-1].len() > 0) as i32 
-                    + (padded[i][j-1].len() > 0) as i32 
-                    >= min_neighbours){
-                eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            else if (padded[i+1][j+1].len() > 0) && ((padded[i-1][j].len() > 0) as i32 
-                    + (padded[i-1][j-1].len() > 0) as i32 
-                    + (padded[i][j-1].len() > 0) as i32 
-                    >= min_neighbours){
-                eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            else if (padded[i+1][j-1].len() > 0) && ((padded[i-1][j].len() > 0) as i32 
-                    + (padded[i-1][j+1].len() > 0) as i32 
-                    + (padded[i][j-1].len() > 0) as i32 
-                    >= min_neighbours){
-                eroded[i-1][j-1] = original[i-1][j-1].clone();
-            }
-            else if erode {
-                let empty_vec: Vec<las::Point> = Vec::new();
-                eroded[i-1][j-1] = empty_vec;
-            }
-        }
-    }
-    eroded
-}
-
-//NO FUNCIONA BIEEN
-fn erode_continuity(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize, erode: bool) -> Vec<Vec<Vec<las::Point>>> {
-    let padding = 
-        match neighbourhood {
-            8 => {
-                1
-            },
-            16 => {
-                2
-            }
-            24 => {
-                3
-            }
-            _ => {
-                panic!("Invalid neighbourhood size");
-            }
-        };
-
-    let mut eroded = point_cloud.clone();
-    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, padding);
-
-    for i in padding..padded.len() - padding {
-        for j in padding..padded[i].len() - padding {
-            let mut count_up: i32 = 0;
-            let mut count_down: i32  = 0;
-            let mut count_left: i32  = 0;
-            let mut count_right: i32  = 0;
-            let mut count_adj: i32  = 0;
-            let mut has_neighbour = false;
-            
-        
-            let border_cell = 
-                if i == padding || j == padding || i == (padded.len() - (padding + 1) ) || j == (padded[i].len() - (padding + 1) ) { //Border cells
-                    true
-                }
-                else {
-                    false
-                };
-            
-        
-            for k in i-padding..i {
-                for l in j-padding..j+padding+1 {
-                    if padded[k][l].len() > 0 {
-                        count_up += 1;
-                        if k == i-1 && l >= j-1 && l <= j+1 {
-                            count_adj += 1;
-                        }
-                    }
-                    if padded[i+padding-(i-k)][l].len() > 0 {
-                        count_down += 1;
-                        if k == i+1 && l >= j-1 && l <= j+1 {
-                            count_adj += 1;
-                        }
-                    }
-                }
-            }
-            if (!border_cell && count_up == count_down && count_up >= 1 && count_adj >= 2) 
-                || (border_cell && (count_up == (count_down - padding as i32) || count_up == count_down + padding as i32) && count_up >= 1 && count_adj >= 2) {
-                has_neighbour = true;
-            }
-
-            if !has_neighbour {
-                let mut count_adj = 0;
-                for k in i-padding..i+padding+1 {
-                    for l in j-padding..j {
-                        if padded[k][l].len() > 0 {
-                            count_left += 1;
-                            if k >= i-1 && k <= i+1 && l == j-1 {
-                                count_adj += 1;
-                            }
-                        }
-                        if padded[k][j+padding-(j-l)].len() > 0 {
-                            count_right += 1;
-                            if k >= i-1 && k <= i+1 && l == j+1 {
-                                count_adj += 1;
-                            }
-                        }
-                    }
-                }
-                if (!border_cell && count_left == count_right && count_left >= 1 && count_adj >= 2)
-                    || (border_cell && (count_left == (count_right - padding as i32)|| count_left == (count_right + padding as i32)) && count_left >= 1 && count_adj >= 2) {
-                    has_neighbour = true;
-                }
-            } 
-
-            match has_neighbour {
-                true => {
-                    eroded[i-padding][j-padding] = 
-                        original[i-padding][j-padding].clone();
-                },
-                false => {
-                    if eroded[i-padding][j-padding].len() > 0 && erode {
-                        eroded[i-padding][j-padding].clear();
-                    }
-                }
-            }
-        }
-    }
-    eroded
-}
-
 fn points_under_max(cell: &Vec<las::Point>, meters: f64) -> Vec<las::Point> {
     let mut point_cell = Vec::new();
     let max_z = cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
@@ -499,27 +259,7 @@ fn points_under_max(cell: &Vec<las::Point>, meters: f64) -> Vec<las::Point> {
     point_cell
 }
 
-fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize) -> Vec<Vec<Vec<las::Point>>> {
-    let padding = 
-        match neighbourhood {
-            8 => {
-                1
-            },
-            16 => {
-                2
-            }
-            24 => {
-                3
-            }
-
-            32 => {
-                4
-            }
-            _ => {
-                panic!("Invalid neighbourhood size");
-            }
-        };
-
+fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, padding: usize) -> Vec<Vec<Vec<las::Point>>> {
     let mut eroded = point_cloud.clone();
     let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, padding);
 
@@ -553,7 +293,13 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
                 }
 
                 for x in 0..neighbours_per_level.len() {
-                    if (border_cell && neighbours_per_level[x] >= 1) || (!border_cell && neighbours_per_level[x] >= 2) {
+                    if border_cell && neighbours_per_level[x] >= 1 {
+                        has_neighbour = true;
+                    }
+                    else if !border_cell && i-x >= padding && neighbours_per_level[x] >= 1 {
+                        has_neighbour = true;
+                    }
+                    else if !border_cell && neighbours_per_level[x] >= 2 {
                         has_neighbour = true;
                     }
                     else {
@@ -565,18 +311,23 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
                 
                 
                 if !has_neighbour {
-                    for k in i-padding..i+padding+1 {
-                        for l in j-padding..j {
-                            if padded[k][l].len() > 0 {
-                                neighbours_per_level[l-(j-padding)] += 1;
-                            }
-                            if padded[k][j+padding-(j-l)].len() > 0 {
-                                neighbours_per_level[l-(j-padding)] += 1;
-                            }
+                    for l in j-padding..j {
+                        if padded[i][l].len() > 0 {
+                            neighbours_per_level[l-(j-padding)] += 1;
+                        }
+                        if padded[i][j+padding-(j-l)].len() > 0 {
+                            neighbours_per_level[l-(j-padding)] += 1;
                         }
                     }
+                    
                     for x in 0..neighbours_per_level.len() {
-                        if (border_cell && neighbours_per_level[x] >= 1) || (!border_cell && neighbours_per_level[x] >= 2) {
+                        if border_cell && neighbours_per_level[x] >= 1 {
+                            has_neighbour = true;
+                        }
+                        else if !border_cell && i-x >= padding && neighbours_per_level[x] >= 1 {
+                            has_neighbour = true;
+                        }
+                        else if !border_cell && neighbours_per_level[x] >= 2 {
                             has_neighbour = true;
                         }
                         else {
@@ -589,7 +340,7 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
                 match has_neighbour {
                     true => {
                         eroded[i-padding][j-padding] = 
-                            points_under_max(&original[i-padding][j-padding], 18.);
+                            points_under_max(&original[i-padding][j-padding], 23.);
                     },
                     false => {
                         eroded[i-padding][j-padding].clear();
@@ -604,14 +355,11 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
 fn erode(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize) -> Vec<Vec<Vec<las::Point>>> {
 
     match neighbourhood {
-        4 => {
+        0 => {
             return erode_4(filtered, original);
         },
-        8 | 16 | 24 | 32 => {
-            return erode_neighborhood(filtered, original, neighbourhood);
-        },
         _ => {
-            panic!("Invalid neighbourhood size");
+            return erode_neighborhood(filtered, original, neighbourhood);
         }
     }
 }
@@ -651,7 +399,7 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
 
             match has_neighbour {
                 true => {
-                    dilated[i-1][j-1] = points_under_max(&original[i-1][j-1], 18.);
+                    dilated[i-1][j-1] = points_under_max(&original[i-1][j-1], 23.);
                 },
                 false => {
                     dilated[i-1][j-1].clear();
@@ -661,6 +409,127 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
     }
     dilated
 }
+//-----------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
+
+fn convert_to_binary(point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<bool>> {
+    let mut binary = Vec::new();
+    for i in 0..point_cloud.len() {
+        binary.push(Vec::new());
+        for _ in 0..point_cloud[i].len() {
+            binary[i].push(false);
+        }
+    }
+    
+    for i in 0..binary.len() {
+        for j in 0..binary[i].len() {
+            if point_cloud[i][j].len() > 0 {
+                binary[i][j] = true;
+            }
+            else {
+                binary[i][j] = false;
+            }
+        }
+    }
+    binary
+}
+
+
+//------------------------------------BREADTH-FIRST-----------------------------------------
+//-----------------------------------------------------------------------------------------
+
+fn is_safe(matrix: &Vec<Vec<bool>>, visited: &Vec<Vec<bool>>, i: i32, j: i32) -> bool {
+    if i < 0 || j < 0 || i >= matrix.len() as i32 
+      || j >= matrix[i as usize].len() as i32
+      || visited[i as usize][j as usize] 
+      || !matrix[i as usize][j as usize] {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+fn find_component_size(matrix: &Vec<Vec<bool>>) -> Vec<(usize, usize)> {
+    let dx:[i32; 8] = [1, 1, 1, 0, -1, -1, -1, 0];
+    let dy:[i32; 8]  = [1, 0, -1, -1, -1, 0, 1, 1];
+    let mut candidates = Vec::new();
+    
+    let mut visited = Vec::new();
+    for i in 0..matrix.len() {
+        visited.push(Vec::new());
+        for _ in 0..matrix[i].len() {
+            visited[i].push(false);
+        }
+    }
+
+    for i in 0..matrix.len() {
+        for j in 0..matrix[i].len() {
+            let mut count = 0;
+            let mut cells_group = Vec::new();
+            if !visited[i][j] && matrix[i][j] {
+                let mut queue = Vec::new();
+                queue.push((i, j));
+                visited[i][j] = true;
+                while queue.len() != 0 {
+                    let (x, y) = queue.pop().unwrap();
+                    cells_group.push((x, y));
+                    count += 1;
+                    for k in 0..8 {
+                        let (x1, y1) = (x as i32 + dx[k], y as i32 + dy[k]);
+                        if is_safe(matrix, &visited, x1, y1) {
+                            queue.push((x1 as usize, y1 as usize));
+                            visited[x1 as usize][y1 as usize] = true;
+                        }
+                    }
+                }
+                if count > 30 && maximum_distant_cells(&cells_group){
+                    candidates.append(&mut cells_group);
+                }
+            }
+        }
+    }
+    candidates
+}
+
+fn euclidean_cells(cell1: (usize, usize), cell2: (usize, usize)) -> f64 {
+    let (x1, y1) = cell1;
+    let (x2, y2) = cell2;
+    let x_diff = (x1 as f64 - x2 as f64).powi(2);
+    let y_diff = (y1 as f64 - y2 as f64).powi(2);
+    (x_diff + y_diff).sqrt()
+}
+
+fn maximum_distant_cells(cells: &Vec<(usize, usize)>) -> bool{
+    let mut result = false;
+    let mut max_distance = 0.;
+    
+    for i in 0..cells.len()-1 {
+        for j in i+1..cells.len() {
+            if euclidean_cells(cells[i], cells[j]) > max_distance {
+                max_distance = euclidean_cells(cells[i], cells[j]);
+            }
+        }
+    }
+    if max_distance > 18. {
+        result = true;
+    }
+    result
+}
+
+fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+    let mut result = Vec::new();
+    for i in 0..point_cloud.len() {
+        result.push(Vec::new());
+        for _ in 0..point_cloud[i].len() {
+            result[i].push(Vec::new());
+        }
+    }
+    for i in 0..cells_list.len() {
+        result[cells_list[i].0][cells_list[i].1] = point_cloud[cells_list[i].0][cells_list[i].1].clone();
+    }
+    result
+}
+
 //-----------------------------------------------------------------------------------------
 //---------------------------------------WRITING-------------------------------------------
 
@@ -708,7 +577,7 @@ fn execute_algorithms(input: &String, output: &String) {
     let now = time::Instant::now();
     let ground_reduced = reduce_ground(&mut reader, 0.01);
     println!("Ground Reduction time: {:?} millisecs.", now.elapsed().as_millis());
-   
+
     //Grid Division
     let now = time::Instant::now();
     let gridded = grid_division(reader.header(), ground_reduced, 7.5);
@@ -716,27 +585,29 @@ fn execute_algorithms(input: &String, output: &String) {
    
     //Filtering
     let now = time::Instant::now();
-    let filtered = filter_cells(&gridded, 6, 4, 4, 7, 10, 30);
+    let filtered = filter_cells(&gridded, 6, 4, 4, 7, 30);
     println!("Filtering time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Erosions
-    let eroded4 = erode(&filtered, &gridded, 4);
-    let eroded32 = erode(&eroded4, &gridded, 32);
+    let eroded4 = erode(&filtered, &gridded, 0);
+    let eroded32 = erode(&eroded4, &gridded, 5);
     println!("Erosion time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Dilation
     let now = time::Instant::now();
     let dilated = dilate(&eroded32, &gridded);
-    let eroded4 = erode(&dilated, &gridded, 4);
-    let eroded16 = erode(&eroded4, &gridded, 16);
-    
-    //let eroded_cont = continuity(&dilated, &gridded, true);
-    //let dilated2 = dilate(&eroded_cont, &gridded);
+
+    let eroded4 = erode(&dilated, &gridded, 0);
+    let eroded32 = erode(&eroded4, &gridded, 4);
     println!("Dilation time: {:?} millisecs.", now.elapsed().as_millis());
+
+    let binary = convert_to_binary(&eroded32);
+    let candidates = find_component_size(&binary);
+    let result = create_result(&candidates, &eroded32);
    
     //Writing las/laz and csv
     let now = time::Instant::now();
-    write_las(&eroded16, raw_header, output);
+    write_las(&result, raw_header, output);
     println!("Writing time: {:?} millisecs.", now.elapsed().as_millis());
 
 }
@@ -785,7 +656,3 @@ fn main() {
     }
     println!("Total time for {:?} cells: {:?} secs.", num_cells, total_time.elapsed().as_secs());
 }
-
-
-//
-// Reconectar lineas electricas (buscar vecino mas cercano en una direccion dentro de un radio)
