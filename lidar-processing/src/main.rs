@@ -53,65 +53,7 @@ fn grid_division(file_header: &Header, point_cloud: Vec<las::Point>,cell_size: f
     }
     grids
 }
-//-------------------------------------------NOISE REMOVAL-------------------------------------------------
 
-//Euclidean distance between two points
-fn euclidean_distance(point1: &las::Point, point2: &las::Point) -> f64 {
-    let x_diff = point1.x - point2.x;
-    let y_diff = point1.y - point2.y;
-    let z_diff = point1.z - point2.z;
-    (x_diff*x_diff + y_diff*y_diff + z_diff*z_diff).sqrt()
-}
-
-fn mean_zvalue(points: &Vec<las::Point>) -> f64 {
-    let mut sum = 0.0;
-    for point in points {
-        sum += point.z;
-    }
-    sum / points.len() as f64
-}
-
-//Check if point is noise
-fn is_noise(point: &las::Point, cell: &Vec<las::Point>, epsilon: f64, limit: usize, diff_threshold: f64) -> bool {
-    let mut count = 0;
-    let mut noise = true;
-    let mean_z = mean_zvalue(&cell);
-    for i in 0..cell.len() {
-        if &cell[i] != point && (euclidean_distance(point, &cell[i]) < epsilon) {
-            count += 1;
-            if count >= limit && (point.z - mean_z).abs() < diff_threshold {
-                noise = false;
-                break;
-            }
-        }
-    }
-    noise
-}
-
-fn clean_noise(point_cloud: &Vec<Vec<Vec<las::Point>>>, up_epsilon: f64, up_limit: usize, diff_threshold: f64) -> Vec<Vec<Vec<las::Point>>> {
-    let mut cleaned = point_cloud.clone();
-    for i in 0..cleaned.len() {
-        for j in 0..cleaned[i].len() {
-            loop {
-                if cleaned[i][j].len() != 0 {
-                    let max_z = cleaned[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
-                    let highest_point = cleaned[i][j].iter().find(|p| p.z == max_z).unwrap();
-                    if is_noise(&highest_point, &cleaned[i][j], up_epsilon, up_limit, diff_threshold) {
-                        let index = cleaned[i][j].iter().position(|p| p == highest_point).unwrap();
-                        cleaned[i][j].remove(index);
-                    }
-                    else {
-                        break;
-                    }
-                }
-                else {
-                    break;
-                }
-            }
-        }
-    }
-    cleaned
-}
 //-------------------------------------------FILTER HEIGHT DENSITYS-------------------------------------------------
 
 fn filter_height_density(point_cell: &Vec<las::Point>, min_density: usize, empty:usize , non_empty_cont:usize, non_empty: usize, end: usize) -> Vec<las::Point> {
@@ -174,22 +116,22 @@ fn filter_cells(point_cloud: &Vec<Vec<Vec<las::Point>>>, min_density: usize, emp
 }
 
 //-----------------------------------------------PADDING MATRIX----------------------------------------------
-fn empty_vector(num: usize) -> Vec<Vec<las::Point>> {
-    let mut vec: Vec<Vec<las::Point>> = Vec::new();
+fn empty_vector(num: usize) -> Vec<bool> {
+    let mut vec: Vec<bool> = Vec::new();
     for _ in 0..num {
-        vec.push(Vec::new());
+        vec.push(false);
     }
     vec
 }
 
-fn create_padded_point_cloud(point_cloud: &Vec<Vec<Vec<las::Point>>>, padding: usize) -> Vec<Vec<Vec<las::Point>>> {
-    let mut padded_point_cloud: Vec<Vec<Vec<las::Point>>> = Vec::new();
-    let empty_cells: Vec<Vec<las::Point>> = empty_vector(padding);
+fn create_padded_point_cloud(point_cloud: &Vec<Vec<bool>>, padding: usize) -> Vec<Vec<bool>> {
+    let mut padded_point_cloud: Vec<Vec<bool>> = Vec::new();
+    let empty_cells: Vec<bool> = empty_vector(padding);
 
     for i in 0..padding { //Add padding rows to the top
         padded_point_cloud.push(Vec::new());
         for _ in 0..(point_cloud[i].len() + padding*2) {
-            padded_point_cloud[i].push(Vec::new());
+            padded_point_cloud[i].push(false);
         }
     }
 
@@ -209,21 +151,21 @@ fn create_padded_point_cloud(point_cloud: &Vec<Vec<Vec<las::Point>>>, padding: u
     for i in padding..padding*2 { //Add padding rows to the bottom
         padded_point_cloud.push(Vec::new());
         for _ in 0..(point_cloud[i].len() + padding*2) {
-            padded_point_cloud[point_cloud.len()+i].push(Vec::new());
+            padded_point_cloud[point_cloud.len()+i].push(false);
         }
     }
     padded_point_cloud
 }
 
 //-----------------------------------------------EROSIONS----------------------------------------------
-fn erode_4(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+fn erode_4(point_cloud: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
     let mut eroded = point_cloud.clone();
-    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, 1);
+    let padded: Vec<Vec<bool>> = create_padded_point_cloud(&eroded, 1);
     
     for i in 1..padded.len() - 1 {
         for j in 1..padded[i].len() - 1 {
             // At least 1 neighbour in the neighbourhood (top, bottom, right, left)
-            if  padded[i][j].len() > 0 {
+            if  padded[i][j] == true {
                 let min_neighbours = 
                     if i == 1 || j == 1 || i == (padded.len() - 2) || j == (padded[i].len() - 2) { //Border cells
                         1
@@ -232,14 +174,14 @@ fn erode_4(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::
                         2
                     };
 
-                if ( ((padded[i+1][j].len() > 0) as i32) + ((padded[i-1][j].len() > 0) as i32) 
-                    + ((padded[i][j+1].len() > 0) as i32) + ((padded[i][j-1].len() > 0) as i32) 
+                if ( ((padded[i+1][j] == true) as i32) + ((padded[i-1][j] == true) as i32) 
+                    + ((padded[i][j+1] == true) as i32) + ((padded[i][j-1] == true) as i32) 
                     ) >= min_neighbours  {
-                        eroded[i-1][j-1] = original[i-1][j-1].clone();
+                        eroded[i-1][j-1] = true;
                 }
 
                 else {
-                    eroded[i-1][j-1].clear();
+                    eroded[i-1][j-1] = false;
                 }
             }
         }
@@ -247,21 +189,30 @@ fn erode_4(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::
     eroded
 }
 
-fn points_under_max(cell: &Vec<las::Point>, meters: f64) -> Vec<las::Point> {
-    let mut point_cell = Vec::new();
-    let max_z = cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
+fn points_under_max(point_cloud: &Vec<Vec<Vec<las::Point>>>, meters: f64) -> Vec<Vec<Vec<las::Point>>> {
+    let mut output = Vec::new();
+    for i in 0..point_cloud.len() {
+        output.push(Vec::new());
+        for j in 0..point_cloud[i].len() {
+            let cell = &point_cloud[i][j];
+            let mut point_cell = Vec::new();
 
-    for point in cell {
-        if point.z >= max_z - meters {
-            point_cell.push(point.clone());
+            let max_z = cell.iter().map(|p| p.z).fold(f64::NAN, f64::max);
+
+            for point in cell {
+                if point.z >= max_z - meters {
+                    point_cell.push(point.clone());
+                }
+            }
+            output[i].push(point_cell);
         }
     }
-    point_cell
+    output
 }
 
-fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, padding: usize) -> Vec<Vec<Vec<las::Point>>> {
+fn erode_neighborhood(point_cloud: &Vec<Vec<bool>>, padding: usize) -> Vec<Vec<bool>> {
     let mut eroded = point_cloud.clone();
-    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&eroded, padding);
+    let padded: Vec<Vec<bool>> = create_padded_point_cloud(&eroded, padding);
 
     for i in padding..padded.len() - padding {
         for j in padding..padded[i].len() - padding {
@@ -272,7 +223,7 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
             
             let mut has_neighbour = false;
             
-            if padded[i][j].len() > 0 {
+            if padded[i][j] == true {
                 let border_cell = 
                 if i == padding || j == padding || i == (padded.len() - (padding + 1) ) || j == (padded[i].len() - (padding + 1) ) { //Border cells
                     true
@@ -283,10 +234,10 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
 
                 for k in i-padding..i {
                     for l in j-padding..j+padding+1 {
-                        if padded[k][l].len() > 0 {
+                        if padded[k][l] == true  {
                             neighbours_per_level[k-(i-padding)] += 1;
                         }
-                        if padded[i+padding-(i-k)][l].len() > 0 {
+                        if padded[i+padding-(i-k)][l] == true {
                             neighbours_per_level[k-(i-padding)] += 1;
                         }
                     }
@@ -312,10 +263,10 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
                 
                 if !has_neighbour {
                     for l in j-padding..j {
-                        if padded[i][l].len() > 0 {
+                        if padded[i][l] == true  {
                             neighbours_per_level[l-(j-padding)] += 1;
                         }
-                        if padded[i][j+padding-(j-l)].len() > 0 {
+                        if padded[i][j+padding-(j-l)] == true  {
                             neighbours_per_level[l-(j-padding)] += 1;
                         }
                     }
@@ -339,11 +290,10 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
                 
                 match has_neighbour {
                     true => {
-                        eroded[i-padding][j-padding] = 
-                            points_under_max(&original[i-padding][j-padding], 23.);
+                        eroded[i-padding][j-padding] = true
                     },
                     false => {
-                        eroded[i-padding][j-padding].clear();
+                        eroded[i-padding][j-padding] = false ;
                     }
                 }
             }
@@ -352,22 +302,22 @@ fn erode_neighborhood(point_cloud: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Ve
     eroded
 }
 
-fn erode(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>, neighbourhood: usize) -> Vec<Vec<Vec<las::Point>>> {
+fn erode(filtered: &Vec<Vec<bool>>, neighbourhood: usize) -> Vec<Vec<bool>> {
 
     match neighbourhood {
         0 => {
-            return erode_4(filtered, original);
+            return erode_4(filtered);
         },
         _ => {
-            return erode_neighborhood(filtered, original, neighbourhood);
+            return erode_neighborhood(filtered, neighbourhood);
         }
     }
 }
 
 //-----------------------------------------------DILATION----------------------------------------------
-fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
+fn dilate(filtered: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
     let mut dilated = filtered.clone();
-    let padded: Vec<Vec<Vec<las::Point>>> = create_padded_point_cloud(&dilated, 1);
+    let padded: Vec<Vec<bool>> = create_padded_point_cloud(&dilated, 1);
     
     for i in 1..padded.len() - 1{
         for j in 1..padded[i].len() - 1 {
@@ -381,8 +331,8 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
                 };
 
             for k in j-1..j+2 {
-                if ((padded[i-1][k].len() > 0) as i32 
-                    + (padded[i+1][k].len() > 0) as i32 
+                if ((padded[i-1][k] == true ) as i32 
+                    + (padded[i+1][k] == true ) as i32 
                 ) >= min_neighbours {
                     has_neighbour = true;
                     break;
@@ -390,8 +340,8 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
             }
             
             if !has_neighbour {
-                if ((padded[i][j-1].len() > 0) as i32 
-                    + (padded[i][j+1].len() > 0) as i32 
+                if ((padded[i][j-1] == true ) as i32 
+                    + (padded[i][j+1] == true ) as i32 
                 ) >= min_neighbours {
                     has_neighbour = true;
                 }
@@ -399,10 +349,10 @@ fn dilate(filtered: &Vec<Vec<Vec<las::Point>>>, original: &Vec<Vec<Vec<las::Poin
 
             match has_neighbour {
                 true => {
-                    dilated[i-1][j-1] = points_under_max(&original[i-1][j-1], 23.);
+                    dilated[i-1][j-1] = true;
                 },
                 false => {
-                    dilated[i-1][j-1].clear();
+                    dilated[i-1][j-1] = false;
                 }
             }
         }
@@ -449,7 +399,7 @@ fn is_safe(matrix: &Vec<Vec<bool>>, visited: &Vec<Vec<bool>>, i: i32, j: i32) ->
     }
 }
 
-fn find_component_size(matrix: &Vec<Vec<bool>>) -> Vec<(usize, usize)> {
+fn find_component_size(matrix: &Vec<Vec<bool>>, dist_thres:f64) -> Vec<(usize, usize)> {
     let dx:[i32; 8] = [1, 1, 1, 0, -1, -1, -1, 0];
     let dy:[i32; 8]  = [1, 0, -1, -1, -1, 0, 1, 1];
     let mut candidates = Vec::new();
@@ -482,7 +432,10 @@ fn find_component_size(matrix: &Vec<Vec<bool>>) -> Vec<(usize, usize)> {
                         }
                     }
                 }
-                if count > 30 && maximum_distant_cells(&cells_group){
+                let ([(i1, j1), (i2, j2)], distance) = most_distant_cells(&cells_group);
+
+                if (count > 30 && distance > dist_thres) || ((i1 == 0 || i1 == matrix.len()-1 || j1 == 0 || j1 == matrix[i1].len()-1) 
+                                                            && i2 == 0 || i2 == matrix.len()-1 || j2 == 0 || j2 == matrix[i2].len()-1) {
                     candidates.append(&mut cells_group);
                 }
             }
@@ -499,21 +452,20 @@ fn euclidean_cells(cell1: (usize, usize), cell2: (usize, usize)) -> f64 {
     (x_diff + y_diff).sqrt()
 }
 
-fn maximum_distant_cells(cells: &Vec<(usize, usize)>) -> bool{
-    let mut result = false;
+fn most_distant_cells(cells: &Vec<(usize, usize)>) -> ([(usize, usize); 2], f64){
     let mut max_distance = 0.;
+    let mut most_distant:[(usize, usize); 2] = [(0, 0), (0, 0)];
     
     for i in 0..cells.len()-1 {
         for j in i+1..cells.len() {
             if euclidean_cells(cells[i], cells[j]) > max_distance {
                 max_distance = euclidean_cells(cells[i], cells[j]);
+                most_distant = [cells[i], cells[j]];
             }
         }
     }
-    if max_distance > 18. {
-        result = true;
-    }
-    result
+
+    (most_distant, max_distance)
 }
 
 fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
@@ -587,27 +539,31 @@ fn execute_algorithms(input: &String, output: &String) {
     let now = time::Instant::now();
     let filtered = filter_cells(&gridded, 6, 4, 4, 7, 30);
     println!("Filtering time: {:?} millisecs.", now.elapsed().as_millis());
+
+    let binary = convert_to_binary(&filtered);
    
     //Erosions
-    let eroded4 = erode(&filtered, &gridded, 0);
-    let eroded32 = erode(&eroded4, &gridded, 5);
+    let eroded4 = erode(&binary,0);
+    let eroded32 = erode(&eroded4,5);
     println!("Erosion time: {:?} millisecs.", now.elapsed().as_millis());
    
     //Dilation
     let now = time::Instant::now();
-    let dilated = dilate(&eroded32, &gridded);
+    let dilated = dilate(&eroded32);
 
-    let eroded4 = erode(&dilated, &gridded, 0);
-    let eroded32 = erode(&eroded4, &gridded, 4);
+    let eroded4 = erode(&dilated, 0);
+    let eroded32 = erode(&eroded4, 4);
     println!("Dilation time: {:?} millisecs.", now.elapsed().as_millis());
 
-    let binary = convert_to_binary(&eroded32);
-    let candidates = find_component_size(&binary);
-    let result = create_result(&candidates, &eroded32);
+    
+    let candidates = find_component_size(&eroded32, 18.);
+    let result = create_result(&candidates, &gridded);
+
+    let out = points_under_max(&result, 18.);
    
     //Writing las/laz and csv
     let now = time::Instant::now();
-    write_las(&result, raw_header, output);
+    write_las(&out, raw_header, output);
     println!("Writing time: {:?} millisecs.", now.elapsed().as_millis());
 
 }
