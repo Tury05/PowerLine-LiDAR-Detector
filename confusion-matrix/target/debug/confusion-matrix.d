@@ -1,1 +1,1 @@
-/home/tury/Escritorio/APUNTES/TFG/TFG-LiDAR-Processing/confusion-matrix/target/debug/confusion-matrix: /home/tury/Escritorio/APUNTES/TFG/TFG-LiDAR-Processing/confusion-matrix/src/main.rs
+C:\Users\carlos\Documents\DOCENTE\TFGs\TFG_PointCloud\lidar\Arturo\TFG-LiDAR-Processing\confusion-matrix\target\debug\confusion-matrix.exe: C:\Users\carlos\Documents\DOCENTE\TFGs\TFG_PointCloud\lidar\Arturo\TFG-LiDAR-Processing\confusion-matrix\src\main.rs
