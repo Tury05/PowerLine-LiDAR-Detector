@@ -94,12 +94,10 @@ def main():
             for file in list_of_files:   
                 if not file.endswith(".laz"):
                     continue      
-                filename = os.path.basename(file)
-                filename = os.path.basename(os.path.join(os.path.basename(mypath), file))
-                print("tile:", filename)
-                ng_string = NO_GROUND[:59] + sys.argv[2] + file + NO_GROUND[59:-49] + sys.argv[2] + "/no_grounds/NG_" + filename + NO_GROUND[-49:]
-                g_string = GROUND[:59] + sys.argv[2] + file + GROUND[59:-10] + sys.argv[2] + "/grounds/G_" + filename + GROUND[-10:]
-                gt_string = GROUND_TRUTH[:59] + sys.argv[2] + file + GROUND_TRUTH[59:-50] + sys.argv[2] + "/ground_truth/GROUND_TRUTH_" + filename + GROUND_TRUTH[-50:]
+                print("tile:", file)
+                ng_string = NO_GROUND[:59] + sys.argv[2] + file + NO_GROUND[59:-49] + sys.argv[2] + "/no_grounds/NG_" + file + NO_GROUND[-49:]
+                g_string = GROUND[:59] + sys.argv[2] + file + GROUND[59:-10] + sys.argv[2] + "/grounds/G_" + file + GROUND[-10:]
+                gt_string = GROUND_TRUTH[:59] + sys.argv[2] + file + GROUND_TRUTH[59:-50] + sys.argv[2] + "/ground_truth/GROUND_TRUTH_" + file + GROUND_TRUTH[-50:]
 
                 if operation == "-g":
                     ground = pdal.Pipeline(g_string)
@@ -109,6 +107,7 @@ def main():
                     # print("JSON", ng_string)
                     ground = pdal.Pipeline(ng_string)
                 _ = ground.execute()
+            break   #prevent descending into subfolders
 
     elif isfile(path):
         filename = os.path.basename(path)
