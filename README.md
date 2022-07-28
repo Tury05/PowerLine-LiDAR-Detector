@@ -4,8 +4,7 @@
 - Modificacion erode y dilate (Añadido opcion de vecindad 4/8)
 
 # Cosas por hacer
-- Probar RANSAC
-- Concurrencia y paralelismo
+- Refactorizar código
 
 # Ejecucion
 
