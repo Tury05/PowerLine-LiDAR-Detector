@@ -89,7 +89,7 @@ fn main() {
                     let path_gt = path_gt.path();
                     for path_original in &vec3 {
                         let path_original = path_original.path();
-                        if path_filtered.file_name().unwrap().to_str().unwrap()[9..] == path_gt.file_name().unwrap().to_str().unwrap()[13..] 
+                        if path_filtered.file_name().unwrap().to_str().unwrap()[11..] == path_gt.file_name().unwrap().to_str().unwrap()[13..] 
                         && path_filtered.file_name().unwrap().to_str().unwrap()[11..] == *path_original.file_name().unwrap().to_str().unwrap() {
                             let filename_filtered = path_filtered.file_name().unwrap().to_str().unwrap();
                             let filtered_path = format!("{}/{}", path1, filename_filtered);
@@ -102,7 +102,7 @@ fn main() {
                             let reader_gt = Reader::from_path(gt_path.clone());
                             let mut reader_gt = match reader_gt {
                                 Ok(reader_gt2) => reader_gt2,
-                                Err(e) => continue
+                                Err(e) => {println!("{:?}", e); break}
                             };
 
                             let mut file = File::open(original_path).unwrap();
