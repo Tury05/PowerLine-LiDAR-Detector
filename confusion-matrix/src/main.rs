@@ -1,11 +1,11 @@
 use las::{Read, Reader, raw};
-use std::{fs::File, fs::metadata, fs::read_dir, env, time, ffi::OsStr};
+use std::{fs::File, fs::metadata, fs::read_dir, env, ffi::OsStr};
 
 fn create_matrix(filtered: &mut las::Reader, ground_truth: &mut las::Reader, original: &raw::Header) -> Vec<u32> {
     let filtered_vec = filtered.points().map(|r| r.unwrap()).collect::<Vec<_>>();
     let ground_truth_vec = ground_truth.points().map(|r| r.unwrap()).collect::<Vec<_>>();
     let mut matrix = Vec::new(); //TN, FN, TP, FP
-    for _ in 0..6 {
+    for _ in 0..4 {
         matrix.push(0);
     }
 
@@ -89,8 +89,11 @@ fn main() {
                     let path_gt = path_gt.path();
                     for path_original in &vec3 {
                         let path_original = path_original.path();
-                        if path_filtered.file_name().unwrap().to_str().unwrap()[11..] == path_gt.file_name().unwrap().to_str().unwrap()[13..] 
-                        && path_filtered.file_name().unwrap().to_str().unwrap()[11..] == *path_original.file_name().unwrap().to_str().unwrap() {
+                        let filtered_name = path_filtered.file_name().unwrap().to_str().unwrap();
+                        let gt_name = path_gt.file_name().unwrap().to_str().unwrap();
+                        let or_name = path_original.file_name().unwrap().to_str().unwrap();
+                        if filtered_name[11..filtered_name.len()-1] == gt_name[13..gt_name.len()-1] 
+                        && filtered_name[11..filtered_name.len()-1] == or_name[0..or_name.len()-1] {
                             let filename_filtered = path_filtered.file_name().unwrap().to_str().unwrap();
                             let filtered_path = format!("{}/{}", path1, filename_filtered);
                             let filename_gt = path_gt.file_name().unwrap().to_str().unwrap();
@@ -134,81 +137,8 @@ fn main() {
                 }
             }
         }
-        println!("Resultados totales de {} tiles: {:?} TN; {:?} FN; {:?} TP; {:?} FP, {:?} POINTS GT, {:?} POINTS FILTERED", 
-            count, main_matrix[0], main_matrix[1], main_matrix[2], main_matrix[3], main_matrix[4], main_matrix[5]);
+        println!("Resultados totales de {} tiles: {:?} TN; {:?} FN; {:?} TP; {:?} FP, {:?} POINTS GT, {:?} POINTS FILTERED, {:?} ORIGINAL POINTS", 
+            count, main_matrix[0], main_matrix[1], main_matrix[2], main_matrix[3], main_matrix[4], main_matrix[5], main_matrix[6]);
     
     }
 }
-/*fn create_matrix(filtered_string: &String, ground_truth_string: &String) -> Vec<usize> {
-    let mut f_neg = 0;
-    let mut f_pos = 0;
-    let mut t_pos = 0;
-    let mut matrix =Vec::new(); //FP, FN, VP
-
-    let path_filtered = filtered_string.clone();
-    let filtered_thread = thread::spawn(move || {
-        let mut filtered = Reader::from_path(path_filtered).unwrap();
-        let mut filtered_vec = Vec::new();
-        for wrapped_point in filtered.points() {
-            let point = wrapped_point.unwrap();
-            filtered_vec.push(point.clone());
-        }
-        filtered_vec
-    });
-    
-    let path_gt= ground_truth_string.clone();
-    let gt_thread = 
-        thread::spawn(move || {
-            let mut ground_truth = Reader::from_path(path_gt).unwrap();
-            let mut ground_truth_vec = Vec::new();
-            for wrapped_point in ground_truth.points() {
-                let point = wrapped_point.unwrap();
-                ground_truth_vec.push(point.clone());
-            }
-            ground_truth_vec
-        });
-
-    let mut filtered_vec = filtered_thread.join().unwrap();
-    let ground_truth_vec = gt_thread.join().unwrap();
-
-    let f_vec = filtered_vec.clone();
-    let mut gt_vec = ground_truth_vec.clone();
-    
-    for point in f_vec {
-        let mut found = false;
-        for ground_truth_point in gt_vec.clone() {
-            if point == ground_truth_point {
-                found = true;
-                let index = gt_vec.iter().position(|x| *x == ground_truth_point).unwrap();
-                gt_vec.remove(index);
-                break;
-            }
-        }
-        if found{
-            t_pos += 1;
-        }
-        else{
-            f_pos += 1;
-        }
-    }
-
-    for point in ground_truth_vec.clone(){
-        let mut found = false;
-        for filtered_point in filtered_vec.clone(){
-            if point == filtered_point {
-                found = true;
-                let index = filtered_vec.iter().position(|x| *x == filtered_point).unwrap();
-                filtered_vec.remove(index);
-                break;
-            }
-        }
-        if !found{
-            f_neg += 1;
-        }
-    }
-    matrix.push(f_pos);
-    matrix.push(f_neg);
-    matrix.push(t_pos);    
-
-    matrix
-} */
