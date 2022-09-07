@@ -50,7 +50,7 @@ fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las
     result
 }
 
-pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec<las::Point>>>, dist_thres:f64) -> Vec<Vec<Vec<las::Point>>> {
+pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec<las::Point>>>, dist_thres:f64, comp_thres: usize) -> Vec<Vec<Vec<las::Point>>> {
     let dx:[i32; 8] = [1, 1, 1, 0, -1, -1, -1, 0];
     let dy:[i32; 8]  = [1, 0, -1, -1, -1, 0, 1, 1];
     let mut candidates = Vec::new();
@@ -85,7 +85,7 @@ pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec
                 }
                 let (_, distance) = most_distant_cells(&cells_group);
 
-                if count > 30 && distance > dist_thres {
+                if count > comp_thres && distance > dist_thres {
                     candidates.append(&mut cells_group);
                 }
             }

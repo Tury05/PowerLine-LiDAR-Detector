@@ -1,7 +1,7 @@
 use las::{Read, Reader, point::Classification, Point};
 use rand::{thread_rng, seq::SliceRandom};
 
-pub fn reduce_ground(point_cloud: &mut Reader, ground_percentage: f64) -> Vec<Point> {
+pub fn ground_reduction(point_cloud: &mut Reader, ground_percentage: f64) -> Vec<Point> {
     let mut points_vector = Vec::new();
     let remove = [(true, 1.-ground_percentage), (false, ground_percentage)];
 

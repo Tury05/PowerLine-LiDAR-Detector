@@ -18,7 +18,7 @@ fn execute_algorithms(input: &String, output: &String){
 
     //Ground Reduction
     let now = time::Instant::now();
-    let ground_reduced = ground::reduce_ground(&mut readed_items.0, 0.01);
+    let ground_reduced = ground::ground_reduction(&mut readed_items.0, 0.01);
     println!("Ground Reduction time: {:?} millisecs.", now.elapsed().as_millis());
 
     //Grid Division
@@ -47,7 +47,7 @@ fn execute_algorithms(input: &String, output: &String){
     println!("Morphological operations time: {:?} millisecs.", now.elapsed().as_millis());
 
     //Graph based filtering
-    let result = graph::filter_conn_components(&eroded32, &gridded, 18.);
+    let result = graph::filter_conn_components(&eroded32, &gridded, 18., 30);
     
     //Writing output file
     let now = time::Instant::now();
