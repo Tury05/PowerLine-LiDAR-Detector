@@ -1,5 +1,4 @@
 *.las
 *.laz
-WBT/
 lidar-processing/target
 confusion-matrix/target

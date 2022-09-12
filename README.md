@@ -41,12 +41,12 @@ python ground_seg.py -g <input>
 
 2. Execute power line detector module with input being result of ground segmentation module:
 ```
-./lidar-processing <input> <output>
+./pl-detector <input> <output>
 ```
 
 # Metrics calculations
 
-Open confusion-matrix folder and execute command:
+Execute command:
 ```
-./confusion-matrix <filtered tiles folder> <ground_truth tiles folder> <original tiles folder>
+./metrics <filtered tiles folder> <ground_truth tiles folder> <original tiles folder>
 ```
