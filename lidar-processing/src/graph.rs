@@ -1,17 +1,19 @@
 //------------------------------------BREADTH-FIRST-----------------------------------------
 //-----------------------------------------------------------------------------------------
 
+//Checks if cell is visited or it's value is true/false.
 fn is_safe(matrix: &Vec<Vec<bool>>, visited: &Vec<Vec<bool>>, i: i32, j: i32) -> bool {
     if i < 0 || j < 0 || i >= matrix.len() as i32 
       || j >= matrix[i as usize].len() as i32
       || visited[i as usize][j as usize] 
       || !matrix[i as usize][j as usize] {
         return false;
-    } else {
+    } else { //If not visited and value == true
         return true;
     }
 }
 
+//Calculates distance between two cells
 fn euclidean_cells(cell1: (usize, usize), cell2: (usize, usize)) -> f64 {
     let (x1, y1) = cell1;
     let (x2, y2) = cell2;
@@ -20,6 +22,7 @@ fn euclidean_cells(cell1: (usize, usize), cell2: (usize, usize)) -> f64 {
     (x_diff + y_diff).sqrt()
 }
 
+//Search for the most distant cells in connected components
 fn most_distant_cells(cells: &Vec<(usize, usize)>) -> ([(usize, usize); 2], f64){
     let mut max_distance = 0.;
     let mut most_distant:[(usize, usize); 2] = [(0, 0), (0, 0)];
@@ -36,6 +39,7 @@ fn most_distant_cells(cells: &Vec<(usize, usize)>) -> ([(usize, usize); 2], f64)
     (most_distant, max_distance)
 }
 
+//Transforms list of cells to maintain to a point cloud.
 fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
     let mut result = Vec::new();
     for i in 0..point_cloud.len() {
@@ -50,10 +54,11 @@ fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las
     result
 }
 
+//Connected components based filter.
 pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec<las::Point>>>, dist_thres:f64, comp_thres: usize) -> Vec<Vec<Vec<las::Point>>> {
-    let dx:[i32; 8] = [1, 1, 1, 0, -1, -1, -1, 0];
+    let dx:[i32; 8] = [1, 1, 1, 0, -1, -1, -1, 0]; //Neighbours direction (8-neighbourhood)
     let dy:[i32; 8]  = [1, 0, -1, -1, -1, 0, 1, 1];
-    let mut candidates = Vec::new();
+    let mut candidates = Vec::new(); 
     
     let mut visited = Vec::new();
     for i in 0..matrix.len() {
@@ -63,6 +68,7 @@ pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec
         }
     }
 
+    //loop through the entire point cloud (binary matrix)
     for i in 0..matrix.len() {
         for j in 0..matrix[i].len() {
             let mut count = 0;
@@ -71,7 +77,7 @@ pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec
                 let mut queue = Vec::new();
                 queue.push((i, j));
                 visited[i][j] = true;
-                while queue.len() != 0 {
+                while queue.len() != 0 { //Visit neighbours in every direction
                     let (x, y) = queue.pop().unwrap();
                     cells_group.push((x, y));
                     count += 1;

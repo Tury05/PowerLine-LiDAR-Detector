@@ -1,6 +1,7 @@
 use las::{Reader, Writer, Write, point::Classification, raw};
 use std::fs::File;
 
+//Reads las/laz file and returns array of points and header
 pub fn read_las(input: &String) -> (Reader, raw::Header)  {
     let reader = match Reader::from_path(input) {
         Ok(reader) => reader,
@@ -10,7 +11,7 @@ pub fn read_las(input: &String) -> (Reader, raw::Header)  {
     };
 
     let mut file = File::open(input).unwrap();
-    let raw_header = raw::Header::read_from(&mut file).unwrap(); //Leemos el header original para quedarnos con los datos de version, padding, scales...
+    let raw_header = raw::Header::read_from(&mut file).unwrap(); //Reads original header for keeping important data such as version, padding, scales...
     (reader, raw_header)
 }
 
@@ -29,7 +30,7 @@ pub fn write_las(point_cloud: &Vec<Vec<Vec<las::Point>>>, raw_header: raw::Heade
                     if point.return_number > 5 {
                         point.return_number = 5;
                     }
-                    if point.classification == Classification::TransmissionTower {
+                    if point.classification != Classification::Ground {
                         writer.write(point.clone()).unwrap();
                     }
                 }

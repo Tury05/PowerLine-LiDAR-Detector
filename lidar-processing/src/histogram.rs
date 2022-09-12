@@ -2,7 +2,8 @@ use las::Point;
 
 //---------------------------------------Histograms-------------------------------------------
 
-/*//Function to get histogram of points hegihts in each cell
+//Function to get histogram of points hegihts in each cell
+#[allow(dead_code)]
 pub fn get_histogram(points: &Vec<Point>) -> Vec<(f64, usize)>{
     let min_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::min);
     let max_z = points.iter().map(|p| p.z).fold(f64::NAN, f64::max);
@@ -24,10 +25,11 @@ pub fn get_histogram(points: &Vec<Point>) -> Vec<(f64, usize)>{
     }
     
     histogram
-}*/
+}
 
 //-------------------------------------------FILTER HEIGHT DENSITYS-------------------------------------------------
 
+//Local Histogram based filter
 fn process_cell(point_cell: &Vec<Point>, min_density: usize, empty:usize , non_empty_cont:usize, non_empty: usize, end: usize) -> Vec<Point> {
     let mut cell = Vec::new();
     let mut candidate = false;
@@ -39,20 +41,20 @@ fn process_cell(point_cell: &Vec<Point>, min_density: usize, empty:usize , non_e
     let min_z = point_cell.iter().map(|p| p.z).fold(f64::NAN, f64::min);
     for i in 0..end {
         if (max_z - (i as f64)) > min_z{
-            let density = point_cell.iter().filter
+            let density = point_cell.iter().filter          //Number of points in height range
                     (|p| p.z <= max_z - (i as f64) && p.z > max_z - (i as f64 + 1.)).count();
             
-            if density > min_density {
+            if density > min_density {      //Height range is not empty
                 count_non_empty += 1;
                 total_count_non_empty += 1;
                 count_empty = 0;
             
-            } else {
+            } else {    //Height range is empty
                 count_empty += 1;
                 count_non_empty = 0;
             }
 
-            if count_non_empty >= non_empty_cont || total_count_non_empty >= non_empty {
+            if count_non_empty >= non_empty_cont || total_count_non_empty >= non_empty {    //Multiple non empty height range (cell is not candidate)
                 break;
             }
 

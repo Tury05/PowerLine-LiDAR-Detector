@@ -11,7 +11,7 @@ mod grid;
 //----------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------
 
-fn execute_algorithms(input: &String, output: &String){
+fn execute_algorithms(input: &String, output: &String) {
     let mut readed_items = io::read_las(input); 
 
     println!("----------Processing file: {}----------", input);
@@ -29,7 +29,7 @@ fn execute_algorithms(input: &String, output: &String){
     //Histogram based filtering
     let now = time::Instant::now();
     let filtered = histogram::histogram_filter(&gridded, 6, 4, 4, 7, 30);
-    println!("Filtering time: {:?} millisecs.", now.elapsed().as_millis());
+    println!("Local Histogram Filtering time: {:?} millisecs.", now.elapsed().as_millis());
 
     let binary = morph::convert_to_binary(&filtered);
    
@@ -47,7 +47,9 @@ fn execute_algorithms(input: &String, output: &String){
     println!("Morphological operations time: {:?} millisecs.", now.elapsed().as_millis());
 
     //Graph based filtering
+    let now = time::Instant::now();
     let result = graph::filter_conn_components(&eroded32, &gridded, 18., 30);
+    println!("Connected Components Filtering time: {:?} millisecs.", now.elapsed().as_millis());
     
     //Writing output file
     let now = time::Instant::now();
@@ -58,6 +60,11 @@ fn execute_algorithms(input: &String, output: &String){
 fn main() {
     let total_time = time::Instant::now();
     let args: Vec<String> = env::args().collect();
+
+    if args.len() != 3 {
+        panic!("Error: Program must be executes with command \"./lidar-processing <input> <output>\"");
+    }
+
     let input = &args[1];
     let output = &args[2];
     let mut num_cells = 0;
@@ -78,7 +85,7 @@ fn main() {
             if extension == Some("las") || extension == Some("laz") {
                 let filename = path.file_name().unwrap().to_str().unwrap();
                 let input_path = format!("{}/{}", input, filename);
-                let output_filename = format!("{}/GROUND_TRUTH_{}.{}", output, &filename[0..filename.len()-4], extension.unwrap());
+                let output_filename = format!("{}/FILTERED_{}.{}", output, &filename[0..filename.len()-4], extension.unwrap());
                 num_cells += 1;
                 execute_algorithms(&input_path, &output_filename);
             }
@@ -97,5 +104,5 @@ fn main() {
         num_cells += 1;
         execute_algorithms(input, &output_filename);
     }
-    println!("Total time for {:?} cells: {:?} secs.", num_cells, total_time.elapsed().as_secs());
+    println!("Total time for {:?} cells: {:?} milisecs.", num_cells, total_time.elapsed().as_millis());
 }

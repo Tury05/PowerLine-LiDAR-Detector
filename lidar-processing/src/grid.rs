@@ -1,6 +1,11 @@
+use core::panic;
+
 use las::{Header, Point};
 
 pub fn grid_division(file_header: &Header, point_cloud: Vec<Point>,cell_size: f64) -> Vec<Vec<Vec<Point>>>{
+    if cell_size <= 0. {
+        panic!("Grid division error. Cell_size must be greater than 0");
+    }
     let min_x = file_header.bounds().min.x;
     let min_y = file_header.bounds().min.y;
     let max_x = file_header.bounds().max.x;
