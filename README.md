@@ -12,11 +12,11 @@ In order to execute this processing algorithm, it's necessary to install
 some dependencies.
 
 1. Firstly a python installation is needed:
-[a link](https://www.python.org/downloads/)
+[python web](https://www.python.org/downloads/)
 
 2. Later conda installation is needed:
 In Windows:
-[a link](https://www.anaconda.com/products/distribution)
+[anaconda web](https://www.anaconda.com/products/distribution)
 
 In Linux:
 ```
