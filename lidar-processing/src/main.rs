@@ -48,8 +48,13 @@ fn execute_algorithms(input: &String, output: &String) {
 
     //Graph based filtering
     let now = time::Instant::now();
-    let result = graph::filter_conn_components(&eroded32, &gridded, 18., 30);
+    let conn_comps = graph::filter_conn_components(&eroded32, 18., 30);
     println!("Connected Components Filtering time: {:?} millisecs.", now.elapsed().as_millis());
+
+    //Density voxel filtering
+    let now = time::Instant::now();
+    let result = grid::create_result(&conn_comps, &gridded, 45);
+    println!("Density voxel Filtering time: {:?} millisecs.", now.elapsed().as_millis());
     
     //Writing output file
     let now = time::Instant::now();

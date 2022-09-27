@@ -37,3 +37,50 @@ pub fn grid_division(file_header: &Header, point_cloud: Vec<Point>,cell_size: f6
     }
     grids
 }
+
+pub fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las::Point>>>, density_thres: usize) -> Vec<Vec<Vec<las::Point>>> {
+    let mut result = Vec::new();
+    for i in 0..point_cloud.len() {
+        result.push(Vec::new());
+        for _ in 0..point_cloud[i].len() {
+            result[i].push(Vec::new());
+        }
+    }
+    for i in 0..cells_list.len() {
+        result[cells_list[i].0][cells_list[i].1] = point_cloud[cells_list[i].0][cells_list[i].1].clone();
+    }
+    let mut mean_density = 0;
+    let mut count = 0;
+    for i in 0..result.len() {
+        for j in 0..result[i].len() {
+            if result[i][j].len() > 0 {
+                let max_z = result[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
+                let min_z = result[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
+                for x in min_z as i32..max_z as i32 {
+                    let density = result[i][j].iter().filter          //Number of points in height range
+                    (|p| p.z >= x as f64 && p.z < x as f64 + 1.).count();
+                    if density > 0 {
+                        mean_density += density;
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    if count > 0 {
+        mean_density = mean_density/count;
+        for i in 0..result.len() {
+            for j in 0..result[i].len() {
+                let max_z = result[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::max);
+                let min_z = result[i][j].iter().map(|p| p.z).fold(f64::NAN, f64::min);
+                for w in min_z as i32..max_z as i32 {
+                    if result[i][j].iter().filter
+                    (|p| p.z >= w as f64 && p.z < w as f64 + 1.).count() > mean_density + density_thres {
+                        result[i][j].retain(|x| x.z > w as f64 + 1.);
+                    }
+                }
+            }
+        }
+    }
+    result
+}

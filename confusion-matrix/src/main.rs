@@ -12,7 +12,7 @@ fn create_matrix(filtered: &mut las::Reader, ground_truth: &mut las::Reader, ori
     for point in &filtered_vec{
         let mut found = false;
         for ground_truth_point in &ground_truth_vec{
-            if *point == *ground_truth_point {
+            if point.x == ground_truth_point.x && point.y == ground_truth_point.y && point.z == ground_truth_point.z {
                 found = true;
             }
         }
@@ -27,7 +27,7 @@ fn create_matrix(filtered: &mut las::Reader, ground_truth: &mut las::Reader, ori
     for point in &ground_truth_vec{
         let mut found = false;
         for filtered_point in &filtered_vec{
-            if *point == *filtered_point {
+            if point.x == filtered_point.x && point.y == filtered_point.y && point.z == filtered_point.z {
                 found = true;
             }
         }

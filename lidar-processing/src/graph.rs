@@ -39,23 +39,8 @@ fn most_distant_cells(cells: &Vec<(usize, usize)>) -> ([(usize, usize); 2], f64)
     (most_distant, max_distance)
 }
 
-//Transforms list of cells to maintain to a point cloud.
-fn create_result(cells_list: &Vec<(usize, usize)>, point_cloud: &Vec<Vec<Vec<las::Point>>>) -> Vec<Vec<Vec<las::Point>>> {
-    let mut result = Vec::new();
-    for i in 0..point_cloud.len() {
-        result.push(Vec::new());
-        for _ in 0..point_cloud[i].len() {
-            result[i].push(Vec::new());
-        }
-    }
-    for i in 0..cells_list.len() {
-        result[cells_list[i].0][cells_list[i].1] = point_cloud[cells_list[i].0][cells_list[i].1].clone();
-    }
-    result
-}
-
 //Connected components based filter.
-pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec<las::Point>>>, dist_thres:f64, comp_thres: usize) -> Vec<Vec<Vec<las::Point>>> {
+pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, dist_thres:f64, comp_thres: usize) -> Vec<(usize, usize)> {
     let dx:[i32; 8] = [1, 1, 1, 0, -1, -1, -1, 0]; //Neighbours direction (8-neighbourhood)
     let dy:[i32; 8]  = [1, 0, -1, -1, -1, 0, 1, 1];
     let mut candidates = Vec::new(); 
@@ -97,5 +82,5 @@ pub fn filter_conn_components(matrix: &Vec<Vec<bool>>, point_cloud: &Vec<Vec<Vec
             }
         }
     }
-    create_result(&candidates, point_cloud)
+    candidates
 }
