@@ -90,3 +90,13 @@ python src/ground_seg.py -g <input>
 - Always activate the Conda environment before running Python scripts or Rust binaries.
 - Ensure your terminal recognizes `cargo` and `python` commands.
 - The `setup.sh` script automates compilation and installation for convenience.
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+## 📝 Citation
+
+If you use this project in your research or publications, please cite as:
+
+Arturo Ramos Rey, "Detección de líneas eléctricas en nubes de puntos LiDAR a través de un filtro basado en histogramas locales", TFG, [Universidade da Coruña], [2022].
