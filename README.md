@@ -1,52 +1,92 @@
 # PowerLine LiDAR Detector
 
-LiDAR technology is one of the main data acquisition techniques in the geospatial field. In
-the energy area, this technology is commonly used to capture point clouds of the environment
-to later process them and analyze risk situations around power lines. This task, until now,
-has been performed in most cases manually. This work consists of automating the processing
-of the point clouds in order to detect power lines. In it, an algorithm based on geometric
-features is developed.
+LiDAR technology is widely used in geospatial data acquisition. In the energy sector, it helps capture point clouds to analyze risks around power lines. This project automates the processing of point clouds to detect power lines using a geometric-features-based algorithm.
 
-# Installation
-In order to execute this processing algorithm, it's necessary to install
-some dependencies.
+## 📦 Installation
 
-1. Firstly a python installation is needed:
-[python web](https://www.python.org/downloads/)
+### 1️⃣ Install Python and Conda
 
-2. Later conda installation is needed:
-In Windows:
-[anaconda web](https://www.anaconda.com/products/distribution)
+- **Python:** [Python Downloads](https://www.python.org/downloads/)
+- **Conda:**
 
-In Linux:
-```
-bash Anaconda-latest-Linux-x86_64.sh
-```
+  **Windows:** [Anaconda](https://www.anaconda.com/products/distribution)
 
-3. Later you need to install PDAL library:
-```
-conda install -c conda-forge pdal
+  **Linux/macOS:**
+  ```bash
+  bash Anaconda-latest-Linux-x86_64.sh
+  ```
+
+### 2️⃣ Clone the repository
+
+```bash
+git clone https://github.com/Tury05/PowerLine-LiDAR-Detector.git
+cd PowerLine-LiDAR-Detector
 ```
 
+### 3️⃣ Create Conda environment
 
-# Execution
-
-In order to execute the full procesing algorithm you need to follow this steps:
-
-1. Execute ground segmentation module:
-```
-conda activate pdalpy
-python ground_seg.py -g <input>
+```bash
+conda env create -f environment.yml
+conda activate pl_detector
 ```
 
-2. Execute power line detector module with input being result of ground segmentation module:
-```
-./pl-detector <input> <output>
+> The `environment.yml` includes Python, PDAL, and other necessary libraries.
+
+### 4️⃣ Install Rust (if not installed)
+
+Install Rust and Cargo:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
 ```
 
-# Metrics calculations
+Make sure `cargo` is in your PATH permanently:
 
-Execute command:
+```bash
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc  # or ~/.bash_profile for bash
+source ~/.zshrc
+cargo --version
 ```
-./metrics <filtered tiles folder> <ground_truth tiles folder> <original tiles folder>
+
+### 5️⃣ Compile Rust modules and install Python project
+
+From the project root:
+
+```bash
+./setup.sh
 ```
+
+This script will:
+
+1. Activate virtual environment.
+2. Compile the Rust processing module (`lidar-processing`).
+3. Compile the validation program (`confusion-matrix`).
+4. Ensure all dependencies are ready.
+
+## ⚡ Execution
+
+### 1️⃣ Ground segmentation (Python module)
+
+```bash
+conda activate pl_detector
+python src/ground_seg.py -g <input>
+```
+
+### 2️⃣ Power line detection (Rust module)
+
+```bash
+./rust_module/target/release/pl-detector <input> <output>
+```
+
+### 3️⃣ Metrics calculation
+
+```bash
+./rust_module/target/release/metrics <processed_tiles_folder> <ground_truth_tiles_folder> <original_tiles_folder>
+```
+
+## ✅ Notes
+
+- Always activate the Conda environment before running Python scripts or Rust binaries.
+- Ensure your terminal recognizes `cargo` and `python` commands.
+- The `setup.sh` script automates compilation and installation for convenience.
