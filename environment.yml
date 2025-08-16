@@ -1,0 +1,7 @@
+name: pl_detector
+channels:
+  - defaults
+dependencies:
+  - python-pdal
+  - pdal
+prefix: /opt/miniconda3/envs/pl_detector
