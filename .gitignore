@@ -2,3 +2,4 @@
 *.laz
 lidar-processing/target
 confusion-matrix/target
+.DS_Store
