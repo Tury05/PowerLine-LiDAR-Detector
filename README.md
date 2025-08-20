@@ -99,4 +99,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 If you use this project in your research or publications, please cite as:
 
-Arturo Ramos Rey, "Detección de líneas eléctricas en nubes de puntos LiDAR a través de un filtro basado en histogramas locales", TFG, Universidade da Coruña, 2022.
+A.Ramos Rey, "Detección de líneas eléctricas en nubes de puntos LiDAR a través de un filtro basado en histogramas locales", Trabajo de Fin de Grado, Universidade da Coruña, 2022.
